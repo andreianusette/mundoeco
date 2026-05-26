@@ -1,6 +1,11 @@
 import feedparser
-import json
+import os
 from datetime import datetime
+from supabase import create_client
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 FUENTES = [
     {"nombre": "Reuters World", "url": "https://feeds.reuters.com/reuters/worldNews", "capa": 1, "region": "global"},
@@ -37,8 +42,18 @@ def fetch_noticias():
             print(f"✗ {fuente['nombre']}: error — {e}")
     return noticias
 
+def guardar_en_supabase(noticias):
+    nuevas = 0
+    for noticia in noticias:
+        try:
+            existente = supabase.table("noticias").select("id").eq("url", noticia["url"]).execute()
+            if not existente.data:
+                supabase.table("noticias").insert(noticia).execute()
+                nuevas += 1
+        except Exception as e:
+            print(f"✗ Error guardando noticia: {e}")
+    print(f"\n✓ {nuevas} noticias nuevas guardadas en Supabase")
+
 if __name__ == "__main__":
     noticias = fetch_noticias()
-    with open("noticias_raw.json", "w", encoding="utf-8") as f:
-        json.dump(noticias, f, ensure_ascii=False, indent=2)
-    print(f"\nTotal: {len(noticias)} noticias guardadas en noticias_raw.json")
+    guardar_en_supabase(noticias)
