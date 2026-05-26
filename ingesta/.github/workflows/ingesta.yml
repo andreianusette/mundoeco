@@ -1,0 +1,25 @@
+name: Ingesta RSS MundoEco
+
+on:
+  schedule:
+    - cron: '0 6,12,18,0 * * *'  # 4 veces al día: 6h, 12h, 18h, 0h
+  workflow_dispatch:  # permite ejecutarlo manualmente también
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar ingesta
+        run: python ingesta/rss_fetch.py
