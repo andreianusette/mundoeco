@@ -17,6 +17,7 @@ FUENTES = [
     {"nombre": "The Africa Report", "url": "https://www.theafricareport.com/feed/", "capa": 3, "region": "africa"},
     {"nombre": "Al-Monitor", "url": "https://www.al-monitor.com/rss", "capa": 3, "region": "oriente_medio"},
     {"nombre": "ECFR", "url": "https://ecfr.eu/feed/", "capa": 2, "region": "europa"},
+    {"nombre": "Brussels Signal", "url": "https://brusselssignal.eu/feed/", "capa": 2, "region": "europa"},
     {"nombre": "El País Internacional", "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada", "capa": 1, "region": "españa"},
 ]
 
