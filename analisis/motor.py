@@ -50,6 +50,7 @@ Sé directo y concreto. Máximo 300 palabras en total."""
     try:
         response = requests.post(GEMINI_URL, json=body)
         data = response.json()
+        print(f"  Respuesta Gemini: {json.dumps(data)[:300]}")
         texto = data["candidates"][0]["content"]["parts"][0]["text"]
         return texto
     except Exception as e:
