@@ -9,7 +9,7 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
 PROMPT_SISTEMA = """Eres un analista geopolítico y económico experto. 
 Tu misión es analizar noticias internacionales respondiendo siempre tres preguntas concretas, 
