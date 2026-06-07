@@ -5,11 +5,11 @@ from supabase import create_client
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
 PROMPT_SISTEMA = """Eres un analista geopolítico y económico experto. 
 Tu misión es analizar noticias internacionales respondiendo siempre tres preguntas concretas, 
@@ -37,24 +37,35 @@ Impacto en el día a día de un ciudadano español: precios, trabajo, ahorros, h
 Si la noticia no tiene impacto relevante en España o en el ciudadano, dilo claramente.
 Sé directo y concreto. Máximo 300 palabras en total."""
 
+    headers = {
+        "x-api-key": CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+
     body = {
-        "contents": [
+        "model": "claude-haiku-4-20250514",
+        "max_tokens": 500,
+        "messages": [
             {
-                "parts": [
-                    {"text": PROMPT_SISTEMA + "\n\n" + prompt}
-                ]
+                "role": "user",
+                "content": PROMPT_SISTEMA + "\n\n" + prompt
             }
         ]
     }
 
     try:
-        response = requests.post(GEMINI_URL, json=body)
+        response = requests.post(CLAUDE_URL, headers=headers, json=body)
         data = response.json()
-        print(f"  Respuesta Gemini: {json.dumps(data)[:300]}")
-        texto = data["candidates"][0]["content"]["parts"][0]["text"]
+        
+        if "error" in data:
+            print(f"  Error Claude: {data['error']['message']}")
+            return None
+        
+        texto = data["content"][0]["text"]
         return texto
     except Exception as e:
-        print(f"✗ Error llamando a Gemini: {e}")
+        print(f"✗ Error llamando a Claude: {e}")
         return None
 
 def procesar_noticias():
