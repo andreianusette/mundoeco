@@ -17,9 +17,9 @@ FUENTES = [
     {"nombre": "The Economist", "url": "https://www.economist.com/finance-and-economics/rss.xml", "capa": 2, "region": "global"},
     {"nombre": "ECFR", "url": "https://ecfr.eu/feed/", "capa": 2, "region": "europa"},
     {"nombre": "Brussels Signal", "url": "https://brusselssignal.eu/feed/", "capa": 2, "region": "europa"},
-    {"nombre": "Brookings Institution", "url": "https://www.brookings.edu/feed/", "capa": 2, "region": "global"},
-    {"nombre": "Carnegie Endowment", "url": "https://carnegieendowment.org/feed/", "capa": 2, "region": "global"},
-    {"nombre": "Bruegel", "url": "https://www.bruegel.org/feed", "capa": 2, "region": "europa"},
+    {"nombre": "Brookings Institution", "url": "https://www.brookings.edu/feeds/rss/research/", "capa": 2, "region": "global"},
+    {"nombre": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss/", "capa": 2, "region": "global"},
+    {"nombre": "Bruegel", "url": "https://www.bruegel.org/publications/bruegel-blog", "capa": 2, "region": "europa"},
     {"nombre": "Geopolitical Futures", "url": "https://geopoliticalfutures.com/feed/", "capa": 2, "region": "global"},
     
     # CAPA 3 — Señales débiles (sur global)
@@ -28,11 +28,11 @@ FUENTES = [
     {"nombre": "Al-Monitor", "url": "https://www.al-monitor.com/rss", "capa": 3, "region": "oriente_medio"},
     {"nombre": "The Diplomat", "url": "https://thediplomat.com/feed/", "capa": 3, "region": "asia"},
     {"nombre": "Middle East Eye", "url": "https://www.middleeasteye.net/rss.xml", "capa": 3, "region": "oriente_medio"},
-    {"nombre": "Quartz Africa", "url": "https://qz.com/africa/feed/", "capa": 3, "region": "africa"},
+    {"nombre": "Quartz Africa", "url": "https://qz.com/rss", "capa": 3, "region": "africa"},
     
     # CAPA 3 — Medios europeos especializados
     {"nombre": "The Objective", "url": "https://theobjective.com/feed", "capa": 3, "region": "españa"},
-    {"nombre": "El Confidencial", "url": "https://www.elconfidencial.com/rss/", "capa": 3, "region": "españa"},
+    {"nombre": "El Confidencial", "url": "https://rss.elconfidencial.com/mundo", "capa": 3, "region": "españa"},
     {"nombre": "Il Giornale", "url": "http://www.ilgiornale.it/rss", "capa": 3, "region": "italia"},
     {"nombre": "Süddeutsche Zeitung", "url": "https://rss.sueddeutsche.de/rss/Topthemen", "capa": 3, "region": "alemania"},
     {"nombre": "Der Spiegel", "url": "http://www.spiegel.de/schlagzeilen/index.rss", "capa": 3, "region": "alemania"},
