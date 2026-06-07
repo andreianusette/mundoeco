@@ -72,7 +72,6 @@ def procesar_noticias():
     resultado = supabase.table("noticias")\
         .select("*")\
         .eq("procesada", False)\
-        .limit(10)\
         .execute()
 
     noticias = resultado.data
