@@ -59,7 +59,7 @@ Sé directo y concreto. Máximo 300 palabras en total."""
         data = response.json()
         
         if "error" in data:
-            print(f"  Error Claude: {data['error']['message']}")
+            print(f"  Error Claude completo: {json.dumps(data)}")
             return None
         
         texto = data["content"][0]["text"]
