@@ -2,7 +2,9 @@ name: Ingesta RSS MundoEco
 
 on:
   schedule:
-    - cron: '0 8,20 * * *'
+    - cron: '0 6 * * *'      # 6:00 AM
+    - cron: '0 14 * * *'     # 14:00 (2 PM)
+    - cron: '0 20 * * *'     # 20:00 (8 PM)
   workflow_dispatch:
 
 jobs:
@@ -26,10 +28,3 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python ingesta/rss_fetch.py
-
-      - name: Ejecutar motor de análisis
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-        run: python analisis/motor.py
