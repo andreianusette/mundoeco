@@ -11,16 +11,36 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
-PROMPT_SISTEMA = """Eres un analista geopolítico y económico experto. 
-Tu misión es analizar noticias internacionales respondiendo siempre tres preguntas concretas, 
+PONDERACION_ESPAÑA = {
+    "EEUU": 9,
+    "China": 8,
+    "UE": 9,
+    "Oriente Medio": 7,
+    "Rusia": 7,
+    "Indo-Pacífico": 5,
+    "Africa": 3,
+    "Latinoamérica": 4,
+    "global": 6,
+}
+
+PROMPT_SISTEMA = """Eres un analista geopolítico y económico especializado en impacto España.
+Tu misión es analizar noticias internacionales respondiendo siempre tres preguntas concretas,
 de forma clara y directa, sin rodeos ni lenguaje académico.
+Recuerda: no ignores el sur global o regiones lejanas, pero sé honesto sobre el impacto real en España.
 Responde SIEMPRE en español."""
 
+def obtener_relevancia_region(region):
+    return PONDERACION_ESPAÑA.get(region, 5)
+
 def analizar_noticia(noticia):
+    region = noticia.get('region', 'global')
+    relevancia = obtener_relevancia_region(region)
+    
     prompt = f"""Analiza esta noticia internacional:
 
 TITULAR: {noticia['titulo']}
 FUENTE: {noticia['fuente']}
+REGIÓN: {region} (relevancia para España: {relevancia}/10)
 RESUMEN: {noticia['resumen']}
 
 Responde exactamente estas tres preguntas:
@@ -29,13 +49,20 @@ Responde exactamente estas tres preguntas:
 Explica las causas profundas, no solo lo superficial. Detecta si hay diferencia entre lo que dicen los actores y lo que realmente está ocurriendo.
 
 2. ¿CÓMO AFECTA A ESPAÑA COMO PAÍS?
-Consecuencias concretas: economía, energía, comercio, política exterior, empleo, sectores específicos.
+Sé específico y honesto:
+- Impacto directo: comercio, energía, inversión, seguridad, empleo, sectores específicos
+- Impacto indirecto: cambios en alianzas, decisiones de la UE, competencia geoestratégica
+- Horizonte temporal: ¿en 3 meses, 1 año, 5 años?
+- Si el impacto es bajo, dilo claramente. No todo afecta igual a España.
 
 3. ¿CÓMO ME PUEDE AFECTAR A MÍ EN PARTICULAR?
-Impacto en el día a día de un ciudadano español: precios, trabajo, ahorros, hipoteca, coste de vida.
+Impacto en el día a día: precios, trabajo, ahorros, hipoteca, coste de vida, seguridad.
+Si no hay impacto directo, explica por qué igualmente debería estar en el radar.
 
-Si la noticia no tiene impacto relevante en España o en el ciudadano, dilo claramente.
-Sé directo y concreto. Máximo 300 palabras en total."""
+NOTA IMPORTANTE: A veces lo que parece lejano (inversión china en Africa, tratados en Asia)
+afecta más que lo obvio. Sé inteligente: conecta puntos cuando sea relevante.
+
+Sé directo y concreto. Máximo 400 palabras en total."""
 
     headers = {
         "x-api-key": CLAUDE_API_KEY,
@@ -59,7 +86,7 @@ Sé directo y concreto. Máximo 300 palabras en total."""
         data = response.json()
         
         if "error" in data:
-            print(f"  Error Claude completo: {json.dumps(data)}")
+            print(f"  Error Claude: {data['error']['message']}")
             return None
         
         texto = data["content"][0]["text"]
