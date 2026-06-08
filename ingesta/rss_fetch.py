@@ -33,7 +33,8 @@ FUENTES = [
     # CAPA 3 — Medios europeos especializados
     {"nombre": "The Objective", "url": "https://theobjective.com/feed", "capa": 3, "region": "españa"},
     {"nombre": "El Confidencial", "url": "https://rss.elconfidencial.com/mundo", "capa": 3, "region": "españa"},
-    {"nombre": "Il Giornale", "url": "http://www.ilgiornale.it/rss", "capa": 3, "region": "italia"},
+    {"nombre": "Il Giornale", "url": "https://www.ilgiornale.it/feed.xml", "capa": 3, "region": "italia"},
+    {"nombre": "Notizie Geopolitiche", "url": "https://www.notiziegeopolitiche.net/feed/", "capa": 3, "region": "italia"},
     {"nombre": "Süddeutsche Zeitung", "url": "https://rss.sueddeutsche.de/rss/Topthemen", "capa": 3, "region": "alemania"},
     {"nombre": "Der Spiegel", "url": "http://www.spiegel.de/schlagzeilen/index.rss", "capa": 3, "region": "alemania"},
 ]
