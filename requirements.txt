@@ -1,6 +1,7 @@
 feedparser==6.0.11
 requests==2.31.0
-supabase==1.2.0
+supabase==2.4.0
 httpx==0.24.1
 streamlit==1.40.0
 pandas==2.1.4
+python-dateutil==2.8.2
