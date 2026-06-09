@@ -1,7 +1,7 @@
 feedparser==6.0.11
 requests==2.31.0
-supabase==2.4.0
-httpx==0.24.1
+supabase==2.8.0
+httpx==0.27.0
 streamlit==1.40.0
 polars==0.20.3
 python-dateutil==2.8.2
