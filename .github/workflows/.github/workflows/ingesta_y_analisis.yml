@@ -1,0 +1,60 @@
+name: Ingesta y Análisis MundoEco
+
+on:
+  schedule:
+    - cron: '0 6 * * *'      # 6:00 AM
+    - cron: '0 14 * * *'     # 14:00
+    - cron: '0 20 * * *'     # 20:00
+  workflow_dispatch:
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+    outputs:
+      noticias_nuevas: ${{ steps.ingesta.outputs.nuevas }}
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar ingesta
+        id: ingesta
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python ingesta/rss_fetch.py
+          echo "nuevas=true" >> $GITHUB_OUTPUT
+
+  # Análisis se dispara INMEDIATAMENTE cuando ingesta termina
+  analisis:
+    needs: ingesta
+    runs-on: ubuntu-latest
+    if: needs.ingesta.outputs.noticias_nuevas == 'true'
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar análisis
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: python analisis/motor.py
