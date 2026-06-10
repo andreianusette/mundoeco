@@ -48,14 +48,14 @@ Responde exactamente estas tres preguntas:
 1. ¿POR QUÉ ESTÁ PASANDO ESTO REALMENTE?
 Explica las causas profundas, no solo lo superficial. Detecta si hay diferencia entre lo que dicen los actores y lo que realmente está ocurriendo.
 
-2. ¿CÓMO AFECTA A ESPAÑA COMO PAÍS?
+2. ¿CÓMO AFECTA A ESPAÑA?
 Sé específico y honesto:
 - Impacto directo: comercio, energía, inversión, seguridad, empleo, sectores específicos
 - Impacto indirecto: cambios en alianzas, decisiones de la UE, competencia geoestratégica
 - Horizonte temporal: ¿en 3 meses, 1 año, 5 años?
 - Si el impacto es bajo, dilo claramente. No todo afecta igual a España.
 
-3. ¿CÓMO ME PUEDE AFECTAR A MÍ EN PARTICULAR?
+3. ¿Y A MÍ?
 Impacto en el día a día: precios, trabajo, ahorros, hipoteca, coste de vida, seguridad.
 Si no hay impacto directo, explica por qué igualmente debería estar en el radar.
 

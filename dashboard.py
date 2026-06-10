@@ -1,7 +1,6 @@
 import streamlit as st
 from supabase import create_client
 from datetime import datetime
-from email.utils import parsedate_to_datetime
 
 # Configurar página
 st.set_page_config(
@@ -10,6 +9,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# CSS para reducir tamaño de letras de preguntas
+st.markdown("""
+<style>
+    h3 { font-size: 1.2rem !important; }
+    .stMarkdown h3 { font-size: 1.2rem !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # Conectar a Supabase
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -32,6 +39,16 @@ vista = st.sidebar.radio(
 def cargar_noticias():
     resultado = supabase.table("noticias").select("*").order("fecha", desc=True).execute()
     return resultado.data
+
+@st.cache_data(ttl=300)
+def obtener_fuentes():
+    noticias = cargar_noticias()
+    return sorted(list(set(n['fuente'] for n in noticias)))
+
+@st.cache_data(ttl=300)
+def obtener_regiones():
+    noticias = cargar_noticias()
+    return sorted(list(set(n['region'] for n in noticias)))
 
 noticias = cargar_noticias()
 
@@ -57,24 +74,37 @@ else:
                     with col2:
                         st.metric("Capa", noticia['capa'])
                     
-                    st.markdown("**Análisis:**")
-                    st.markdown(noticia['analisis'])
+                    # Las 3 preguntas con tamaño reducido
+                    analisis_text = noticia['analisis']
+                    st.markdown(f"""
+<div style="font-size: 0.9rem;">
+{analisis_text}
+</div>
+""", unsafe_allow_html=True)
                     st.markdown(f"[Leer original →]({noticia['url']})")
     
     # VISTA 2: Explorar Todas
     elif vista == "🔍 Explorar Todas":
         st.subheader("Todas las noticias")
         
-        fuentes_unicas = list(set(n['fuente'] for n in noticias))
-        regiones_unicas = list(set(n['region'] for n in noticias))
-        
         col1, col2, col3 = st.columns(3)
         with col1:
-            filtro_fuente = st.multiselect("Filtrar por fuente:", fuentes_unicas, default=None)
+            filtro_fuente = st.multiselect(
+                "Filtrar por fuente:",
+                obtener_fuentes(),
+                default=None
+            )
         with col2:
-            filtro_region = st.multiselect("Filtrar por región:", regiones_unicas, default=None)
+            filtro_region = st.multiselect(
+                "Filtrar por región:",
+                obtener_regiones(),
+                default=None
+            )
         with col3:
-            procesada = st.selectbox("Estado:", ["Todas", "Con análisis", "Sin análisis"])
+            procesada = st.selectbox(
+                "Estado:",
+                ["Todas", "Con análisis", "Sin análisis"]
+            )
         
         # Aplicar filtros
         noticias_filtered = noticias
@@ -140,4 +170,4 @@ else:
 
 # Footer
 st.divider()
-st.caption("MundoEco MVP • Datos actualizados • Análisis con Claude API")
+st.caption("MundoEco MVP • Análisis contextualizado para España • Powered by Claude")
