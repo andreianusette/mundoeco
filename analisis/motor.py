@@ -120,7 +120,7 @@ NOTICIA:
 
 def procesar_noticia(noticia):
     try:
-        raw = llamar_claude("claude-3-5-haiku-latest", prompt_haiku(noticia))
+        raw = llamar_claude("claude-3-5-haiku-20240307", prompt_haiku(noticia))
         data = parse_json(raw)
 
         if not data:
@@ -142,7 +142,7 @@ def procesar_noticia(noticia):
 
         # SONNET solo si relevante
         if score >= 20:
-            raw2 = llamar_claude("claude-3-5-sonnet-latest", prompt_sonnet(noticia))
+            raw2 = llamar_claude("claude-3-5-sonnet-20241022", prompt_sonnet(noticia))
             data2 = parse_json(raw2)
 
             if data2 and data2.get("analisis_profundo"):
