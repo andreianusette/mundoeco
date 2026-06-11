@@ -9,42 +9,54 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
-PROMPT_SISTEMA = """Actúa como un analista geopolítico senior y estratega macroeconómico especializado en España y la Unión Europea. 
-Tu estilo es pragmático, directo y profundamente realista. Evita saludos, introducciones o títulos redundantes.
+PROMPT_SISTEMA_MASIVO = """Actúa como un analista geopolítico senior y estratega macroeconómico para el gobierno de España y la UE. 
+Tu misión es recibir un lote masivo de noticias del día, conectar los puntos entre ellas, descartar el ruido (deportes, corazón, sucesos internos irrelevantes) y aislar los eventos de VERDADERO IMPACTO estructural.
 
-Tu misión es analizar la noticia y rellenar STRICTAMENTE el siguiente esquema de etiquetas. No puedes inventar etiquetas nuevas ni escribir nada fuera de ellas:
+Debes devolver obligatoriamente un JSON puro y duro, sin introducciones, sin bloques de código ```json, ni texto explicativo. Solo el objeto JSON con esta estructura exacta:
 
-<titulo_es>Escribe aquí una traducción periodística y atractiva del titular al español</titulo_es>
-<nivel_impacto>Escribe un único número del 1 al 5 evaluando la gravedad potencial para España basándote en estos criterios:
-  1: Ruido de fondo (Eventos internos de otros países sin impacto en Europa).
-  2: Impacto Bajo (Titulares llamativos pero que no alteran mercados ni seguridad).
-  3: Impacto Moderado (Afecta indirectamente a la inflación de la Eurozona o tensiona diplomacia).
-  4: Impacto Alto (Amenaza directa a rutas de suministro de España, crisis energética inminente o tensiones graves en socios como Marruecos/Argelia).
-  5: Impacto Crítico (Guerra abierta que corta el gas/petróleo, rescates financieros en la Eurozona o amenaza militar directa).</nivel_impacto>
-<analisis_preguntas>
-1. ¿POR QUÉ ESTÁ PASANDO ESTO REALMENTE?
-[Tu análisis crudo aquí, desenmascarando intereses ocultos, dinero o poder].
+{
+  "analisis_global": "Redacta aquí un informe geopolítico unificado y crudo (mínimo 300 palabras). No analices las noticias de una en una; conecta los datos. Explica qué intereses ocultos se están moviendo hoy en el tablero internacional, cómo se cruzan las distintas noticias del lote y qué hilos económicos se están tensando.",
+  "impacto_espana": "Explica detalladamente cómo este conjunto de eventos afecta a los vectores críticos de España (rutas de suministro, inflación en la Eurozona, coste de la energía o seguridad en la frontera sur).",
+  "bolsillo_ciudadano": "Traduce toda la macroeconomía anterior al bolsillo del ciudadano español de a pie (hipotecas, facturas, empleo, cesta de la compra).",
+  "score_gravedad": 20, // Evalúa el lote completo del 1 al 25 basado en la crisis más grave detectada.
+  "noticias_procesadas_ids": [123, 124, 125] // Lista con los IDs de TODAS las noticias del lote que has incluido en este análisis global.
+}"""
 
-2. ¿CÓMO AFECTA A ESPAÑA?
-[Análisis de impacto basado en los vectores de suministro, inflación o alianzas].
+def procesar_bloque_noticias():
+    # 1. Traemos las últimas 50 noticias de la base de datos
+    resultado = supabase.table("noticias")\
+        .select("id, titulo, fuente, resumen, region, procesada")\
+        .order("id", desc=True)\
+        .limit(50)\
+        .execute()
 
-3. ¿CÓMO ME AFECTA A MÍ EN PARTICULAR?
-[Traducción macroeconómica al bolsillo, empleo o facturas del ciudadano español].
-</analisis_preguntas>"""
-
-def analizar_noticia(noticia):
-    region = noticia.get('region', 'global')
+    todas = resultado.data
     
-    prompt = f"""Rellena el esquema analítico para esta noticia:
+    # 2. Filtramos las que estén pendientes (por texto o booleano)
+    pendientes = []
+    for n in todas:
+        estado = str(n.get('procesada', '')).lower().strip()
+        if estado in ['false', 'f', '0', 'none', '']:
+            pendientes.append(n)
 
-TITULAR ORIGINAL: {noticia['titulo']}
-FUENTE: {noticia['fuente']}
-REGIÓN DE ORIGEN: {region}
-RESUMEN: {noticia['resumen']}"""
+    print(f"Noticias crudas en el pool: {len(todas)}")
+    print(f"Noticias detectadas como pendientes para contexto: {len(pendientes)}")
 
+    if len(pendientes) == 0:
+        print("No hay material nuevo para analizar.")
+        return
+
+    # 3. Empaquetamos todo el lote en un único texto para que Claude tenga TODO el contexto
+    bloque_noticias_texto = ""
+    for n in pendientes:
+        bloque_noticias_texto += f"--- NOTICIA ID: {n['id']} ---\n"
+        bloque_noticias_texto += f"TITULAR: {n['titulo']}\n"
+        bloque_noticias_texto += f"FUENTE: {n['fuente']} | REGIÓN: {n.get('region', 'global')}\n"
+        bloque_noticias_texto += f"RESUMEN: {n['resumen']}\n\n"
+
+    # 4. Llamada de Contexto Agregado a Sonnet
     headers = {
         "x-api-key": CLAUDE_API_KEY,
         "anthropic-version": "2023-06-01",
@@ -52,101 +64,65 @@ RESUMEN: {noticia['resumen']}"""
     }
 
     body = {
-        "model": "claude-3-5-haiku-latest",
-        "max_tokens": 1000,
-        "temperature": 0.2,
-        "messages": [{"role": "user", "content": PROMPT_SISTEMA + "\n\n" + prompt}]
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 2500,
+        "temperature": 0.3,
+        "messages": [
+            {"role": "user", "content": PROMPT_SISTEMA_MASIVO + "\n\nAquí tienes el lote de noticias del día para analizar en conjunto:\n\n" + bloque_noticias_texto}
+        ]
     }
 
+    print("Enviando bloque masivo a Claude 3.5 Sonnet para análisis de contexto cruzado...")
     try:
         response = requests.post(CLAUDE_URL, headers=headers, json=body)
-        data = response.json()
         
         if response.status_code != 200:
-            msg_error = data.get("error", {}).get("message", "Error desconocido")
-            print(f"  Error de API Anthropic (Código {response.status_code}): {msg_error}")
-            return None, None, None
-            
-        if "content" in data and len(data["content"]) > 0:
-            texto_completo = data["content"][0].get("text", "")
-        else:
-            return None, None, None
-            
-        titulo_es = None
-        score_final = "5"
+            print(f"Error de API (Código {response.status_code}): {response.text}")
+            return
+
+        respuesta_texto = response.json()["content"][0]["text"].strip()
         
-        match_tit = re.search(r"<titulo_es>(.*?)</titulo_es>", texto_completo, re.DOTALL)
-        if match_tit:
-            titulo_es = match_tit.group(1).strip()
-            
-        match_niv = re.search(r"<nivel_impacto>(.*?)</nivel_impacto>", texto_completo, re.DOTALL)
-        if match_niv:
-            try:
-                nivel = int(match_niv.group(1).strip())
-                nivel = max(1, min(5, nivel))
-                score_final = str(nivel * 5)
-            except:
-                score_final = "10"
-                
-        match_ana = re.search(r"<analisis_preguntas>(.*?)</analisis_preguntas>", texto_completo, re.DOTALL)
-        if match_ana:
-            analisis_limpio = match_ana.group(1).strip()
-        else:
-            analisis_limpio = re.sub(r"<titulo_es>.*?</titulo_es>", "", texto_completo, flags=re.DOTALL)
-            analisis_limpio = re.sub(r"<nivel_impacto>.*?</nivel_impacto>", "", analisis_limpio, flags=re.DOTALL).strip()
-            
-        return titulo_es, score_final, analisis_limpio
+        # Limpieza de seguridad por si Claude añade markdown de JSON
+        if respuesta_texto.startswith("
+```"):
+            respuesta_texto = re.sub(r"^```json|```$", "", respuesta_texto, flags=re.IGNORECASE).strip()
+
+        data_analisis = json.loads(respuesta_texto)
+        print("✓ Análisis masivo generado y estructurado por Claude con éxito.")
+
+        # 5. Formateamos el resultado final combinando las 3 preguntas macro
+        analisis_formateado = f"""### 1. ¿POR QUÉ ESTÁ PASANDO ESTO REALMENTE?
+{data_analisis['analisis_global']}
+
+### 2. ¿CÓMO AFECTA A ESPAÑA?
+{data_analisis['impacto_espana']}
+
+### 3. ¿CÓMO ME AFECTA A MÍ EN PARTICULAR?
+{data_analisis['bolsillo_ciudadano']}"""
+
+        score = str(data_analisis.get('score_gravedad', 10))
+        ids_utilizados = data_analisis.get('noticias_procesadas_ids', [n['id'] for n in pendientes])
+
+        # 6. Guardamos el mega análisis en la noticia principal del grupo para que presida la portada
+        id_principal = pendientes[0]['id']
+        titulo_portada = f"INFORME GEOPOLÍTICO: Análisis de situación y riesgo macroeconómico"
         
+        supabase.table("noticias").update({
+            "titulo": titulo_portada,
+            "analisis": analisis_formateado,
+            "capa": score,
+            "procesada": True
+        }).eq("id", id_principal).execute()
+
+        # 7. Marcamos todas las demás noticias del lote como procesadas para que no se repitan
+        for n_id in ids_utilizados:
+            if n_id != id_principal:
+                supabase.table("noticias").update({"procesada": True, "capa": "0"}).eq("id", n_id).execute()
+        
+        print(f"✓ Sistema actualizado. El informe de contexto preside la portada con ID {id_principal} y score {score}/25.")
+
     except Exception as e:
-        print(f"✗ Error excepcional llamando a Claude: {e}")
-        return None, None, None
-
-def procesar_noticias():
-    resultado = supabase.table("noticias")\
-        .select("*")\
-        .order("id", desc=True)\
-        .limit(50)\
-        .execute()
-
-    todas_noticias = resultado.data
-    
-    # CHIVATO 1: Ver si Supabase nos está devolviendo datos
-    print(f"DEBUG: Descargadas {len(todas_noticias)} noticias de la base de datos.")
-    if len(todas_noticias) > 0:
-        print(f"DEBUG: El ID de la última noticia es {todas_noticias[0]['id']} y su columna procesada vale: '{todas_noticias[0].get('procesada')}'")
-
-    noticias_pendientes = []
-    for n in todas_noticias:
-        estado = str(n.get('procesada', '')).lower().strip()
-        if estado in ['false', 'f', '0', 'none', '']:
-            noticias_pendientes.append(n)
-
-    # CHIVATO 2: Ver cuántas se quedan después de filtrar en Python
-    print(f"Noticias pendientes encontradas con filtro seguro: {len(noticias_pendientes)}")
-
-    if len(noticias_pendientes) == 0:
-        print("DEBUG: No se procesa nada porque el contador es 0. Revisa los estados en Supabase.")
-
-    for noticia in noticias_pendientes[:10]:
-        print(f"\nAnalizando: {noticia['titulo'][:60]}...")
-        titulo_es, score, analisis = analizar_noticia(noticia)
-
-        if analisis:
-            datos_update = {
-                "analisis": analisis,
-                "capa": score, 
-                "procesada": True
-            }
-            if titulo_es:
-                datos_update["titulo"] = titulo_es
-                
-            supabase.table("noticias")\
-                .update(datos_update)\
-                .eq("id", noticia["id"])\
-                .execute()
-            print(f"✓ Guardado con éxito. Score final: {score}/25")
-        else:
-            print(f"✗ No se pudo analizar")
+        print(f"✗ Fallo en la integración del análisis masivo: {e}")
 
 if __name__ == "__main__":
-    procesar_noticias()
+    procesar_bloque_noticias()
