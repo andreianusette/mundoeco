@@ -142,7 +142,7 @@ def extraer_tag(texto, tag):
     try:
         inicio = texto.split(f"<{tag}>")[1]
         return inicio.split(f"</{tag}>")[0].strip()
-    except:
+    except Exception:
         return ""
 
 
