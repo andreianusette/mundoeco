@@ -2,7 +2,6 @@ import os
 import json
 import re
 import requests
-import sys
 from supabase import create_client
 
 # Configuración segura de credenciales
@@ -77,8 +76,9 @@ def procesar_bloque_noticias():
             "content-type": "application/json"
         }
 
+        # Actualizado con el modelo activo de 2026: claude-sonnet-4-6
         body = {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 3000,
             "temperature": 0.3,
             "messages": [
