@@ -102,8 +102,6 @@ RESUMEN: {noticia['resumen']}"""
         return None, None, None
 
 def procesar_noticias():
-    # TRUCO DE ROBUSTEZ: Traemos las últimas 50 noticias directamente sin filtrar en la base de datos
-    # y hacemos el filtro de forma segura dentro de Python para evitar incompatibilidades de Supabase
     resultado = supabase.table("noticias")\
         .select("*")\
         .order("id", desc=True)\
@@ -112,22 +110,28 @@ def procesar_noticias():
 
     todas_noticias = resultado.data
     
-    # Filtramos en Python aceptando cualquier variante de False (booleano o texto)
+    # CHIVATO 1: Ver si Supabase nos está devolviendo datos
+    print(f"DEBUG: Descargadas {len(todas_noticias)} noticias de la base de datos.")
+    if len(todas_noticias) > 0:
+        print(f"DEBUG: El ID de la última noticia es {todas_noticias[0]['id']} y su columna procesada vale: '{todas_noticias[0].get('procesada')}'")
+
     noticias_pendientes = []
     for n in todas_noticias:
         estado = str(n.get('procesada', '')).lower().strip()
         if estado in ['false', 'f', '0', 'none', '']:
             noticias_pendientes.append(n)
 
+    # CHIVATO 2: Ver cuántas se quedan después de filtrar en Python
     print(f"Noticias pendientes encontradas con filtro seguro: {len(noticias_pendientes)}")
+
+    if len(noticias_pendientes) == 0:
+        print("DEBUG: No se procesa nada porque el contador es 0. Revisa los estados en Supabase.")
 
     for noticia in noticias_pendientes[:10]:
         print(f"\nAnalizando: {noticia['titulo'][:60]}...")
         titulo_es, score, analisis = analizar_noticia(noticia)
 
         if analisis:
-            # Al actualizar, guardamos el booleano False/True estándar, 
-            # pero si tu base de datos requiere texto, Supabase lo asimilará bien.
             datos_update = {
                 "analisis": analisis,
                 "capa": score, 
