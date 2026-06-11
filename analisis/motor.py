@@ -62,32 +62,23 @@ RESUMEN: {noticia['resumen']}"""
         response = requests.post(CLAUDE_URL, headers=headers, json=body)
         data = response.json()
         
-        # Verificación estricta de errores HTTP o de API
         if response.status_code != 200:
             msg_error = data.get("error", {}).get("message", "Error desconocido")
             print(f"  Error de API Anthropic (Código {response.status_code}): {msg_error}")
             return None, None, None
             
-        # Extracción segura del texto según la estructura oficial de Anthropic
         if "content" in data and len(data["content"]) > 0:
             texto_completo = data["content"][0].get("text", "")
         else:
-            print("  Error: Estructura de respuesta inesperada en el JSON de Claude.")
-            return None, None, None
-        
-        if not texto_completo:
-            print("  Error: El modelo devolvió un texto vacío.")
             return None, None, None
             
         titulo_es = None
         score_final = "5"
         
-        # 1. Extraer Título Traducido
         match_tit = re.search(r"<titulo_es>(.*?)</titulo_es>", texto_completo, re.DOTALL)
         if match_tit:
             titulo_es = match_tit.group(1).strip()
             
-        # 2. Extraer Nivel (1 al 5) y multiplicarlo por 5
         match_niv = re.search(r"<nivel_impacto>(.*?)</nivel_impacto>", texto_completo, re.DOTALL)
         if match_niv:
             try:
@@ -97,7 +88,6 @@ RESUMEN: {noticia['resumen']}"""
             except:
                 score_final = "10"
                 
-        # 3. Extraer las preguntas limpias
         match_ana = re.search(r"<analisis_preguntas>(.*?)</analisis_preguntas>", texto_completo, re.DOTALL)
         if match_ana:
             analisis_limpio = match_ana.group(1).strip()
@@ -112,21 +102,32 @@ RESUMEN: {noticia['resumen']}"""
         return None, None, None
 
 def procesar_noticias():
+    # TRUCO DE ROBUSTEZ: Traemos las últimas 50 noticias directamente sin filtrar en la base de datos
+    # y hacemos el filtro de forma segura dentro de Python para evitar incompatibilidades de Supabase
     resultado = supabase.table("noticias")\
         .select("*")\
-        .eq("procesada", False)\
+        .order("id", desc=True)\
+        .limit(50)\
         .execute()
 
-    noticias = resultado.data
-    print(f"Noticias pendientes de analizar: {len(noticias)}")
+    todas_noticias = resultado.data
+    
+    # Filtramos en Python aceptando cualquier variante de False (booleano o texto)
+    noticias_pendientes = []
+    for n in todas_noticias:
+        estado = str(n.get('procesada', '')).lower().strip()
+        if estado in ['false', 'f', '0', 'none', '']:
+            noticias_pendientes.append(n)
 
-    # Limitamos a un máximo de 15 noticias por ejecución para evitar que GitHub Actions 
-    # se quede colgado por tiempo si intenta procesar las 91 de golpe en un solo lote
-    for noticia in noticias[:15]:
+    print(f"Noticias pendientes encontradas con filtro seguro: {len(noticias_pendientes)}")
+
+    for noticia in noticias_pendientes[:10]:
         print(f"\nAnalizando: {noticia['titulo'][:60]}...")
         titulo_es, score, analisis = analizar_noticia(noticia)
 
         if analisis:
+            # Al actualizar, guardamos el booleano False/True estándar, 
+            # pero si tu base de datos requiere texto, Supabase lo asimilará bien.
             datos_update = {
                 "analisis": analisis,
                 "capa": score, 
