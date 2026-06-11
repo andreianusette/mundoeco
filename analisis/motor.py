@@ -34,16 +34,6 @@ def llamar_claude(modelo, prompt):
     }
 
     response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
-   def llamar_claude(modelo, prompt):
-    data = {
-        "model": modelo,
-        "max_tokens": 800,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-
-    response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
 
     print("STATUS:", response.status_code)
     print("RAW RESPONSE:", response.text)
