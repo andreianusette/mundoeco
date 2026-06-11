@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 from supabase import create_client
 
@@ -22,20 +23,43 @@ HEADERS = {
 }
 
 # ==============================
+# HELPERS
+# ==============================
+
+def clean_text(texto):
+    if not texto:
+        return ""
+    texto = texto.strip()
+    texto = re.sub(r"```json", "", texto)
+    texto = re.sub(r"```", "", texto)
+    return texto.strip()
+
+
+def parse_json(texto):
+    try:
+        texto = clean_text(texto)
+        return json.loads(texto)
+    except Exception as e:
+        print("❌ JSON parse error:", e)
+        print("RAW:", texto)
+        return None
+
+
+# ==============================
 # CLAUDE CALL
 # ==============================
 
 def llamar_claude(modelo, prompt):
-    data = {
-        "model": modelo,
-        "max_tokens": 800,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-
     try:
-        response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
+        response = requests.post(
+            CLAUDE_URL,
+            headers=HEADERS,
+            json={
+                "model": modelo,
+                "max_tokens": 800,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+        )
 
         print("STATUS:", response.status_code)
         print("RAW RESPONSE:", response.text)
@@ -45,89 +69,62 @@ def llamar_claude(modelo, prompt):
         data = response.json()
 
         content = data.get("content", [])
-        if not content or not isinstance(content, list):
+        if not content:
             return None
 
-        text = content[0].get("text") if isinstance(content[0], dict) else None
-
-        return text
+        return content[0].get("text", "")
 
     except Exception as e:
-        print("ERROR CLAUDE:", e)
+        print("❌ Claude error:", e)
         return None
 
 
 # ==============================
-# PROMPTS (JSON OBLIGATORIO)
+# PROMPTS (JSON FORZADO)
 # ==============================
 
 def prompt_haiku(noticia):
     return f"""
-Eres un analista geopolítico.
+Devuelve SOLO JSON válido, sin texto adicional.
 
-Responde SOLO en JSON válido, sin texto adicional.
-
-Formato obligatorio:
+Formato EXACTO:
 {{
   "titulo_es": "string",
   "nivel_impacto": 1,
-  "analisis": "string claro y directo"
+  "analisis": "string claro"
 }}
 
 NOTICIA:
-Titulo: {noticia.get('titulo','')}
-Fuente: {noticia.get('fuente','')}
-Región: {noticia.get('region','')}
+{noticia.get('titulo','')}
+REGION:
+{noticia.get('region','')}
 """
 
 
 def prompt_sonnet(noticia):
     return f"""
-Eres un analista geopolítico senior.
-
-Haz un análisis profundo.
-
-Responde SOLO en JSON válido:
+Devuelve SOLO JSON válido.
 
 {{
-  "analisis_profundo": "texto claro, sin relleno"
+  "analisis_profundo": "texto claro sin relleno"
 }}
 
 NOTICIA:
 {noticia.get('titulo','')}
-Región: {noticia.get('region','')}
 """
 
 
 # ==============================
-# PARSER SEGURO
-# ==============================
-
-def parse_json(texto):
-    try:
-        if not texto:
-            return None
-        return json.loads(texto)
-    except Exception as e:
-        print("JSON PARSE ERROR:", e)
-        return None
-
-
-# ==============================
-# PROCESAMIENTO
+# PROCESO
 # ==============================
 
 def procesar_noticia(noticia):
     try:
-        raw = llamar_claude(
-            "claude-3-5-haiku-latest",
-            prompt_haiku(noticia)
-        )
-
+        raw = llamar_claude("claude-3-5-haiku-latest", prompt_haiku(noticia))
         data = parse_json(raw)
 
         if not data:
-            print("❌ Haiku inválido")
+            print("⚠️ Haiku inválido")
             return None
 
         nivel = data.get("nivel_impacto", 1)
@@ -137,28 +134,28 @@ def procesar_noticia(noticia):
         except:
             score = 10
 
-        analisis_final = data.get("analisis", "")
+        analisis = data.get("analisis", "")
 
-        # 🔵 SONNET solo si relevante
+        # 🔥 blindaje extra
+        if not analisis:
+            analisis = "Sin análisis disponible"
+
+        # SONNET solo si relevante
         if score >= 20:
-            raw2 = llamar_claude(
-                "claude-3-5-sonnet-latest",
-                prompt_sonnet(noticia)
-            )
-
+            raw2 = llamar_claude("claude-3-5-sonnet-latest", prompt_sonnet(noticia))
             data2 = parse_json(raw2)
 
-            if data2:
-                analisis_final += "\n\n" + data2.get("analisis_profundo", "")
+            if data2 and data2.get("analisis_profundo"):
+                analisis += "\n\n" + data2["analisis_profundo"]
 
         return {
-            "analisis": analisis_final or "",
+            "analisis": analisis,
             "score": score,
-            "titulo_es": data.get("titulo_es", "")
+            "titulo_es": data.get("titulo_es", noticia.get("titulo", ""))
         }
 
     except Exception as e:
-        print("ERROR procesando noticia:", e)
+        print("❌ Procesamiento error:", e)
         return None
 
 
@@ -171,32 +168,34 @@ def main():
         response = supabase.table("noticias") \
             .select("*") \
             .eq("procesada", False) \
+            .order("id", desc=False) \
             .limit(20) \
             .execute()
 
         noticias = response.data or []
 
-        print(f"Procesando {len(noticias)} noticias...")
+        print(f"📦 Noticias encontradas: {len(noticias)}")
 
         for noticia in noticias:
 
             resultado = procesar_noticia(noticia)
 
             if not resultado:
-                print("⚠️ Noticia omitida")
+                print("⚠️ Skip noticia")
                 continue
 
-            supabase.table("noticias").update({
+            # 🔥 UPDATE blindado
+            res = supabase.table("noticias").update({
                 "analisis": resultado["analisis"],
                 "capa": resultado["score"],
                 "titulo": resultado["titulo_es"],
                 "procesada": True
             }).eq("id", noticia["id"]).execute()
 
-            print(f"✔ Procesada: {noticia.get('titulo')}")
+            print("✔ UPDATE:", res)
 
     except Exception as e:
-        print("ERROR MAIN:", e)
+        print("❌ MAIN ERROR:", e)
 
 
 if __name__ == "__main__":
