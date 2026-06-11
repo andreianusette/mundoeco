@@ -4,7 +4,6 @@ import re
 import requests
 from supabase import create_client
 
-# Mantener las variables de entorno intactas para Railway y Supabase
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
@@ -14,14 +13,14 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
 PROMPT_SISTEMA = """Actúa como un analista geopolítico senior y estratega macroeconómico especializado en España y la Unión Europea. 
-Tu estilo es pragmático, directo y profundamente realista, incluso cínico. Evita el buenismo y las introducciones redundantes. Ve directo al grano.
+Tu estilo es pragmático, directo y profundamente realista. Evita introducciones redundantes.
 
-Tu misión es realizar dos tareas con la noticia proporcionada:
-1. Traducir el titular original al español con un estilo periodístico, riguroso y atractivo. Debes envolver esta traducción STRICTAMENTE entre las etiquetas <titulo_es> y </titulo_es>.
-2. Evaluar críticamente la noticia y responder a tres preguntas concretas analizando el impacto real para España basándote en tres vectores fundamentales (Suministros/Logística, Eurozona/Inflación, y Seguridad/Alianzas).
+Tu misión es realizar tres tareas con la noticia proporcionada:
+1. Traducir el titular original al español con un estilo periodístico y atractivo. Envuélvelo entre las etiquetas <titulo_es> y </titulo_es>.
+2. Evaluar el impacto real para España y asignar una PUNTUACIÓN DE GRAVEDAD GEOPOLÍTICA del 1 al 25 (donde 1 es irrelevante y 25 es una crisis crítica de suministros, inflación o seguridad para España). Envuélvela entre las etiquetas <score> y </score>.
+3. Responder a tres preguntas concretas analizando el impacto real para España (Suministros, Eurozona, y Ciudadano).
 
-Responde SIEMPRE en español, sé directo y concreto, limitando tu análisis a un máximo de 400 palabras en total."""
-
+Responde siempre en español y sé directo."""
 
 def analizar_noticia(noticia):
     region = noticia.get('region', 'global')
@@ -33,18 +32,19 @@ FUENTE: {noticia['fuente']}
 REGIÓN DE ORIGEN: {region}
 RESUMEN: {noticia['resumen']}
 
-Estructura tu respuesta EXACTAMENTE con este formato (no inventes otras etiquetas ni uses viñetas):
+Estructura tu respuesta EXACTAMENTE con este formato:
 
-<titulo_es>Aquí pones la traducción del titular al español</titulo_es>
+<titulo_es>Traducción del titular al español</titulo_es>
+<score>Escribe aquí solo un número entero del 1 al 25</score>
 
-1. ¿POR QUÉ ESTÁ PASANDO ESTO REALMENTE?
-[Detecta el interés real u oculto, contrastando el discurso oficial con los movimientos de dinero o poder].
+1. ¿POR QUYÉ ESTÁ PASANDO ESTO REALMENTE?
+[Tu análisis crudo aquí]
 
 2. ¿CÓMO AFECTA A ESPAÑA?
-[Cruza la noticia con los 3 vectores de análisis, define si el impacto es directo o indirecto y establece un horizonte temporal explícito].
+[Tu análisis de vectores aquí]
 
 3. ¿CÓMO ME AFECTA A MÍ EN PARTICULAR?
-[Traduce la macroeconomía a la cesta de la compra, facturas, hipotecas o empleo del ciudadano en España]."""
+[Tu análisis ciudadano aquí]"""
 
     headers = {
         "x-api-key": CLAUDE_API_KEY,
@@ -55,12 +55,7 @@ Estructura tu respuesta EXACTAMENTE con este formato (no inventes otras etiqueta
     body = {
         "model": "claude-3-haiku-20240307",
         "max_tokens": 1000,
-        "messages": [
-            {
-                "role": "user",
-                "content": PROMPT_SISTEMA + "\n\n" + prompt
-            }
-        ]
+        "messages": [{"role": "user", "content": PROMPT_SISTEMA + "\n\n" + prompt}]
     }
 
     try:
@@ -69,26 +64,32 @@ Estructura tu respuesta EXACTAMENTE con este formato (no inventes otras etiqueta
         
         if "error" in data:
             print(f"  Error Claude: {data['error']['message']}")
-            return None, None
+            return None, None, None
         
         texto_completo = data["content"][0]["text"]
         
-        # Procesamiento inteligente con expresiones regulares para separar el título del análisis
         titulo_es = None
-        analisis_limpio = texto_completo
+        score = "0"
         
-        match = re.search(r"<titulo_es>(.*?)</titulo_es>", texto_completo, re.DOTALL)
-        if match:
-            titulo_es = match.group(1).strip()
-            # Quitamos el fragmento del título del texto general para que el análisis quede limpio
-            analisis_limpio = re.sub(r"<titulo_es>.*?</titulo_es>", "", texto_completo, flags=re.DOTALL).strip()
+        # Extraer Título
+        match_tit = re.search(r"<titulo_es>(.*?)</titulo_es>", texto_completo, re.DOTALL)
+        if match_tit:
+            titulo_es = match_tit.group(1).strip()
             
-        return titulo_es, analisis_limpio
+        # Extraer Score
+        match_sco = re.search(r"<score>(.*?)</score>", texto_completo, re.DOTALL)
+        if match_sco:
+            score = match_sco.group(1).strip()
+            
+        # Limpiar el texto para dejar solo las preguntas
+        analisis_limpio = re.sub(r"<titulo_es>.*?</titulo_es>", "", texto_completo, flags=re.DOTALL)
+        analisis_limpio = re.sub(r"<score>.*?</score>", "", analisis_limpio, flags=re.DOTALL).strip()
+            
+        return titulo_es, score, analisis_limpio
         
     except Exception as e:
         print(f"✗ Error llamando a Claude: {e}")
-        return None, None
-
+        return None, None, None
 
 def procesar_noticias():
     resultado = supabase.table("noticias")\
@@ -101,26 +102,25 @@ def procesar_noticias():
 
     for noticia in noticias:
         print(f"\nAnalizando: {noticia['titulo'][:60]}...")
-        titulo_es, analisis = analizar_noticia(noticia)
+        titulo_es, score, analisis = analizar_noticia(noticia)
 
         if analisis:
-            # Si Claude no logró generar el título por algún motivo, usamos el original como respaldo
-            if not titulo_es:
-                titulo_es = noticia['titulo']
+            # Aprovechamos la columna 'capa' para guardar el score numérico del 1 al 25
+            datos_update = {
+                "analisis": analisis,
+                "capa": score, 
+                "procesada": True
+            }
+            if titulo_es:
+                datos_update["titulo"] = titulo_es
                 
-            # MEJORA: Guardamos tanto el análisis como el nuevo título traducido en la base de datos
             supabase.table("noticias")\
-                .update({
-                    "analisis": analisis, 
-                    "titulo_es": titulo_es,
-                    "procesada": True
-                })\
+                .update(datos_update)\
                 .eq("id", noticia["id"])\
                 .execute()
-            print(f"✓ Análisis y título traducido guardados")
+            print(f"✓ Guardado: Titular traducido y Score [{score}/25] en columna 'capa'")
         else:
             print(f"✗ No se pudo analizar")
-
 
 if __name__ == "__main__":
     procesar_noticias()
