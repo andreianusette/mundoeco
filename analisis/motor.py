@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from supabase import create_client
 
@@ -21,7 +22,7 @@ HEADERS = {
 }
 
 # ==============================
-# CLAUDE API
+# CLAUDE CALL
 # ==============================
 
 def llamar_claude(modelo, prompt):
@@ -44,14 +45,12 @@ def llamar_claude(modelo, prompt):
         data = response.json()
 
         content = data.get("content", [])
-        if not isinstance(content, list) or len(content) == 0:
+        if not content or not isinstance(content, list):
             return None
 
-        first = content[0]
-        if isinstance(first, dict):
-            return first.get("text", "")
+        text = content[0].get("text") if isinstance(content[0], dict) else None
 
-        return None
+        return text
 
     except Exception as e:
         print("ERROR CLAUDE:", e)
@@ -59,28 +58,26 @@ def llamar_claude(modelo, prompt):
 
 
 # ==============================
-# PROMPTS
+# PROMPTS (JSON OBLIGATORIO)
 # ==============================
 
 def prompt_haiku(noticia):
     return f"""
-Analiza esta noticia geopolítica y económica.
+Eres un analista geopolítico.
 
-TITULAR: {noticia.get('titulo', '')}
-FUENTE: {noticia.get('fuente', '')}
-REGIÓN: {noticia.get('region', '')}
+Responde SOLO en JSON válido, sin texto adicional.
 
-Responde SIEMPRE en este formato XML:
+Formato obligatorio:
+{{
+  "titulo_es": "string",
+  "nivel_impacto": 1,
+  "analisis": "string claro y directo"
+}}
 
-<titulo_es>Traducción al español</titulo_es>
-
-<nivel_impacto>1-5</nivel_impacto>
-
-<analisis>
-1. ¿Por qué está pasando esto realmente?
-2. ¿Cómo afecta a España?
-3. ¿Cómo afecta al ciudadano medio?
-</analisis>
+NOTICIA:
+Titulo: {noticia.get('titulo','')}
+Fuente: {noticia.get('fuente','')}
+Región: {noticia.get('region','')}
 """
 
 
@@ -88,39 +85,32 @@ def prompt_sonnet(noticia):
     return f"""
 Eres un analista geopolítico senior.
 
-Analiza en profundidad esta noticia:
+Haz un análisis profundo.
 
-TITULAR: {noticia.get('titulo', '')}
-REGIÓN: {noticia.get('region', '')}
+Responde SOLO en JSON válido:
 
-Haz un análisis AVANZADO:
+{{
+  "analisis_profundo": "texto claro, sin relleno"
+}}
 
-- Explica causas ocultas
-- Conecta con dinámicas globales
-- Identifica consecuencias indirectas
-- Evalúa impacto real para España
-
-Formato:
-
-<analisis_profundo>
-Texto claro, directo y sin relleno.
-</analisis_profundo>
+NOTICIA:
+{noticia.get('titulo','')}
+Región: {noticia.get('region','')}
 """
 
 
 # ==============================
-# UTILIDADES
+# PARSER SEGURO
 # ==============================
 
-def extraer_tag(texto, tag):
+def parse_json(texto):
     try:
         if not texto:
-            return ""
-
-        inicio = texto.split(f"<{tag}>")[1]
-        return inicio.split(f"</{tag}>")[0].strip()
-    except Exception:
-        return ""
+            return None
+        return json.loads(texto)
+    except Exception as e:
+        print("JSON PARSE ERROR:", e)
+        return None
 
 
 # ==============================
@@ -129,40 +119,46 @@ def extraer_tag(texto, tag):
 
 def procesar_noticia(noticia):
     try:
-        resultado_haiku = llamar_claude(
+        raw = llamar_claude(
             "claude-3-5-haiku-latest",
             prompt_haiku(noticia)
         )
 
-        if not resultado_haiku:
+        data = parse_json(raw)
+
+        if not data:
+            print("❌ Haiku inválido")
             return None
 
-        nivel = extraer_tag(resultado_haiku, "nivel_impacto")
+        nivel = data.get("nivel_impacto", 1)
 
         try:
             score = int(nivel) * 5
         except:
-            score = 0
+            score = 10
 
-        analisis_final = resultado_haiku
+        analisis_final = data.get("analisis", "")
 
+        # 🔵 SONNET solo si relevante
         if score >= 20:
-            resultado_sonnet = llamar_claude(
+            raw2 = llamar_claude(
                 "claude-3-5-sonnet-latest",
                 prompt_sonnet(noticia)
             )
 
-            if resultado_sonnet:
-                analisis_final += "\n\n" + resultado_sonnet
+            data2 = parse_json(raw2)
+
+            if data2:
+                analisis_final += "\n\n" + data2.get("analisis_profundo", "")
 
         return {
-            "analisis": analisis_final,
+            "analisis": analisis_final or "",
             "score": score,
-            "titulo_es": extraer_tag(resultado_haiku, "titulo_es")
+            "titulo_es": data.get("titulo_es", "")
         }
 
     except Exception as e:
-        print("Error procesando noticia:", e)
+        print("ERROR procesando noticia:", e)
         return None
 
 
@@ -183,20 +179,24 @@ def main():
         print(f"Procesando {len(noticias)} noticias...")
 
         for noticia in noticias:
+
             resultado = procesar_noticia(noticia)
 
-            if resultado:
-                supabase.table("noticias").update({
-                    "analisis": resultado["analisis"],
-                    "capa": resultado["score"],
-                    "titulo": resultado["titulo_es"],
-                    "procesada": True
-                }).eq("id", noticia["id"]).execute()
+            if not resultado:
+                print("⚠️ Noticia omitida")
+                continue
 
-                print(f"✔ Procesada: {noticia.get('titulo')}")
+            supabase.table("noticias").update({
+                "analisis": resultado["analisis"],
+                "capa": resultado["score"],
+                "titulo": resultado["titulo_es"],
+                "procesada": True
+            }).eq("id", noticia["id"]).execute()
+
+            print(f"✔ Procesada: {noticia.get('titulo')}")
 
     except Exception as e:
-        print("ERROR GENERAL MAIN:", e)
+        print("ERROR MAIN:", e)
 
 
 if __name__ == "__main__":
