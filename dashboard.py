@@ -35,24 +35,46 @@ vista = st.sidebar.radio(
 )
 
 # Función para formatear la fecha de forma bonita
+# FUNCIÓN DE FECHA MEJORADA: Detecta formatos de base de datos y formatos de texto RSS inglés
 def formatear_fecha(fecha_str):
     if not fecha_str:
-        return "Fecha desconocida"
+        return "Fecha reciente"
+    
+    # Limpiamos el texto por si trae microsegundos o zonas horarias molestas
+    fecha_limpia = str(fecha_str).split(".")[0].split("+")[0].strip()
+    
+    # Diccionario para traducir los meses en inglés si vienen del RSS directo
+    meses_en = {"Jan": "Ene", "Apr": "Abr", "Aug": "Ago", "Dec": "Dic"}
+    
     try:
-        # Intenta parsear el formato estándar de base de datos (ISO)
-        # Cortamos microsegundos o zonas horarias si vienen integradas
-        clean_date = fecha_str.split(".")[0].split("+")[0]
-        dt = datetime.strptime(clean_date, "%Y-%m-%dT%H:%M:%S")
+        # Intento 1: Formato estándar de base de datos con "T" (Ej: 2026-06-11T12:00:00)
+        dt = datetime.strptime(fecha_limpia, "%Y-%m-%dT%H:%M:%S")
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         try:
-            # Formato alternativo si viene con espacio en vez de T
-            clean_date = fecha_str.split(".")[0].split("+")[0]
-            dt = datetime.strptime(clean_date, "%Y-%m-%d %H:%M:%S")
+            # Intento 2: Formato estándar con espacio (Ej: 2026-06-11 12:00:00)
+            dt = datetime.strptime(fecha_limpia, "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%d/%m/%Y %H:%M")
         except Exception:
-            # Si falla todo, devuelve los primeros 16 caracteres (YYYY-MM-DD HH:MM)
-            return str(fecha_str)[:16].replace("T", " ")
+            try:
+                # Intento 3: Si viene el formato típico de RSS inglés (Ej: Thu, 11 Jun 2026 12:00:00)
+                # Le quitamos el día de la semana (los primeros 5 caracteres "Thu, ")
+                if "," in fecha_limpia:
+                    fecha_limpia = fecha_limpia.split(",", 1)[1].strip()
+                
+                # Cortamos para quedarnos solo con "11 Jun 2026 12:00"
+                partes = fecha_limpia.split(" ")
+                if len(partes) >= 4:
+                    dia = partes[0].zfill(2)
+                    mes = partes[1]
+                    mes = meses_en.get(mes, mes) # Traduce si es Jan, Apr, Aug o Dec
+                    año = partes[2]
+                    hora = partes[3][:5] # Coge solo HH:MM
+                    return f"{dia} {mes} {año} - {hora}"
+                return fecha_str
+            except Exception:
+                # Si todo falla, muestra los caracteres centrales para que al menos se entienda
+                return str(fecha_str).replace("T", " ")[:16]
 
 @st.cache_data(ttl=300)
 def cargar_noticias():
