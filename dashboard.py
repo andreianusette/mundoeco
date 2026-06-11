@@ -60,7 +60,7 @@ def formatear_fecha(fecha_str):
             except Exception:
                 return str(fecha_str).replace("T", " ")[:16]
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60) # Bajamos el cache a 1 minuto para ver los cambios más rápido
 def cargar_noticias():
     resultado = supabase.table("noticias")\
         .select("*")\
@@ -85,7 +85,7 @@ if not noticias:
     st.warning("No hay noticias aún. Espera a que se ejecute la ingesta.")
 else:
     
-    # VISTA 1: Lectura Rápida - ORDENADA POR SCORE DE IMPACTO (REALISMO PURO)
+    # VISTA 1: Lectura Rápida
     if vista == "📋 Lectura Rápida":
         st.subheader("Análisis estratégico de alto impacto para España")
         
@@ -94,40 +94,46 @@ else:
         if not noticias_analizadas:
             st.info("No hay análisis completados en las últimas horas.")
         else:
-            # Función auxiliar para convertir el valor de 'capa' a entero seguro
-            def obtener_score(n):
+            # Función ultra-segura para forzar el número entero en la ordenación
+            def obtener_score_seguro(n):
                 try:
-                    return int(n.get('capa', 0))
+                    val = n.get('capa', '0')
+                    return int(val)
                 except:
                     return 0
             
-            # ORDENACIÓN CRÍTICA: Priorizamos las de mayor puntuación (1 al 25)
-            noticias_ordenadas_score = sorted(noticias_analizadas, key=obtener_score, reverse=True)
+            # FILTRO DE SEGURIDAD: Solo aceptamos noticias que tengan un score del nuevo motor (mínimo 5)
+            # Esto fulmina las noticias alemanas viejas que tengan rescoldos de pruebas anteriores
+            noticias_filtradas = [n for n in noticias_analizadas if obtener_score_seguro(n) >= 5]
             
-            # Seleccionamos las 7 más graves/relevantes del lote
-            noticias_portada = noticias_ordenadas_score[:7]
+            # Ordenamos por score real numérico descendentemente
+            noticias_ordenadas = sorted(noticias_filtradas, key=obtener_score_seguro, reverse=True)
             
-            for noticia in noticias_portada:
-                with st.container(border=True):
-                    col_tit, col_score = st.columns([5, 1])
-                    with col_tit:
-                        st.markdown(f"### {noticia['titulo']}")
-                        fecha_bonita = formatear_fecha(noticia.get('fecha'))
-                        st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()} | 🕒 {fecha_bonita}")
-                    with col_score:
-                        # Mostramos el badge de gravedad geopolítica
-                        score_val = noticia.get('capa', '0')
-                        st.metric("Gravedad", f"{score_val}/25")
+            noticias_portada = noticias_ordenadas[:7]
+            
+            if not noticias_portada:
+                st.info("Esperando a que el nuevo motor califique las noticias en el próximo lote...")
+            else:
+                for noticia in noticias_portada:
+                    with st.container(border=True):
+                        col_tit, col_score = st.columns([5, 1])
+                        with col_tit:
+                            st.markdown(f"### {noticia['titulo']}")
+                            fecha_bonita = formatear_fecha(noticia.get('fecha'))
+                            st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()} | 🕒 {fecha_bonita}")
+                        with col_score:
+                            score_val = noticia.get('capa', '0')
+                            st.metric("Gravedad", f"{score_val}/25")
+                            
+                        st.markdown("---")
                         
-                    st.markdown("---")
-                    
-                    analisis_text = noticia['analisis']
-                    st.markdown(f"""
+                        analisis_text = noticia['analisis']
+                        st.markdown(f"""
 <div style="font-size: 0.95rem; line-height: 1.6; text-align: justify;">
 {analisis_text}
 </div>
 """, unsafe_allow_html=True)
-                    st.markdown(f"[Leer fuente original →]({noticia['url']})")
+                        st.markdown(f"[Leer fuente original →]({noticia['url']})")
     
     # VISTA 2: Explorar Todas
     elif vista == "🔍 Explorar Todas":
@@ -168,7 +174,7 @@ else:
                         st.markdown(noticia['analisis'])
                 st.markdown(f"[Leer →]({noticia['url']})")
                 
-    # VISTAS ADICIONALES (Por Región y Estadísticas se mantienen operativas)
+    # VISTAS ADICIONALES (Se mantienen intactas)
     elif vista == "🏷️ Por Región":
         st.subheader("Distribución geográfica reciente")
         regiones = sorted(set(n['region'] for n in noticias))
@@ -193,12 +199,6 @@ else:
         for n in noticias:
             fuentes[n['fuente']] = fuentes.get(n['fuente'], 0) + 1
         st.bar_chart(fuentes)
-        
-        st.write("**Noticias recientes por región:**")
-        regiones = {}
-        for n in noticias:
-            regiones[n['region']] = regiones.get(n['region'], 0) + 1
-        st.bar_chart(regiones)
 
 st.divider()
 st.caption("MundoEco MVP • Análisis geopolítico basado en Gravedad Macroeconómica • Powered by Claude")
