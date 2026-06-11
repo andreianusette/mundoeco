@@ -40,7 +40,7 @@ def llamar_claude(modelo, prompt):
 
     try:
         data = response.json()
-return data.get("content", [{}])[0].get("text", "")
+    return data.get("content", [{}])[0].get("text", "")
     except Exception as e:
         print("ERROR PARSEANDO CLAUDE:", e)
         return None
