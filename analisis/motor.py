@@ -21,7 +21,7 @@ HEADERS = {
 }
 
 # ==============================
-# FUNCIONES CLAUDE
+# CLAUDE API
 # ==============================
 
 def llamar_claude(modelo, prompt):
@@ -33,16 +33,28 @@ def llamar_claude(modelo, prompt):
         ]
     }
 
-    response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
-
-    print("STATUS:", response.status_code)
-    print("RAW RESPONSE:", response.text)
-
     try:
+        response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
+
+        print("STATUS:", response.status_code)
+        print("RAW RESPONSE:", response.text)
+
+        response.raise_for_status()
+
         data = response.json()
-    return data.get("content", [{}])[0].get("text", "")
+
+        content = data.get("content", [])
+        if not isinstance(content, list) or len(content) == 0:
+            return None
+
+        first = content[0]
+        if isinstance(first, dict):
+            return first.get("text", "")
+
+        return None
+
     except Exception as e:
-        print("ERROR PARSEANDO CLAUDE:", e)
+        print("ERROR CLAUDE:", e)
         return None
 
 
@@ -54,9 +66,9 @@ def prompt_haiku(noticia):
     return f"""
 Analiza esta noticia geopolítica y económica.
 
-TITULAR: {noticia['titulo']}
-FUENTE: {noticia['fuente']}
-REGIÓN: {noticia['region']}
+TITULAR: {noticia.get('titulo', '')}
+FUENTE: {noticia.get('fuente', '')}
+REGIÓN: {noticia.get('region', '')}
 
 Responde SIEMPRE en este formato XML:
 
@@ -78,15 +90,15 @@ Eres un analista geopolítico senior.
 
 Analiza en profundidad esta noticia:
 
-TITULAR: {noticia['titulo']}
-REGIÓN: {noticia['region']}
+TITULAR: {noticia.get('titulo', '')}
+REGIÓN: {noticia.get('region', '')}
 
 Haz un análisis AVANZADO:
 
 - Explica causas ocultas
 - Conecta con dinámicas globales
 - Identifica consecuencias indirectas
-- Evalúa impacto real para España (corto y medio plazo)
+- Evalúa impacto real para España
 
 Formato:
 
@@ -97,31 +109,51 @@ Texto claro, directo y sin relleno.
 
 
 # ==============================
+# UTILIDADES
+# ==============================
+
+def extraer_tag(texto, tag):
+    try:
+        if not texto:
+            return ""
+
+        inicio = texto.split(f"<{tag}>")[1]
+        return inicio.split(f"</{tag}>")[0].strip()
+    except Exception:
+        return ""
+
+
+# ==============================
 # PROCESAMIENTO
 # ==============================
 
 def procesar_noticia(noticia):
     try:
-        # 🟢 1. HAiku (base)
         resultado_haiku = llamar_claude(
             "claude-3-5-haiku-latest",
             prompt_haiku(noticia)
         )
 
-        # Extraer nivel impacto (simple)
+        if not resultado_haiku:
+            return None
+
         nivel = extraer_tag(resultado_haiku, "nivel_impacto")
-        score = int(nivel) * 5
+
+        try:
+            score = int(nivel) * 5
+        except:
+            score = 0
 
         analisis_final = resultado_haiku
 
-        # 🔵 2. SONNET solo si importante
         if score >= 20:
             resultado_sonnet = llamar_claude(
                 "claude-3-5-sonnet-latest",
                 prompt_sonnet(noticia)
             )
 
-            analisis_final += "\n\n" + resultado_sonnet
+            if resultado_sonnet:
+                analisis_final += "\n\n" + resultado_sonnet
 
         return {
             "analisis": analisis_final,
@@ -130,20 +162,8 @@ def procesar_noticia(noticia):
         }
 
     except Exception as e:
-        print("Error:", e)
+        print("Error procesando noticia:", e)
         return None
-
-
-# ==============================
-# UTILIDADES
-# ==============================
-
-def extraer_tag(texto, tag):
-    try:
-        inicio = texto.split(f"<{tag}>")[1]
-        return inicio.split(f"</{tag}>")[0].strip()
-    except Exception:
-        return ""
 
 
 # ==============================
@@ -151,29 +171,32 @@ def extraer_tag(texto, tag):
 # ==============================
 
 def main():
-    # Obtener noticias sin procesar
-    response = supabase.table("noticias") \
-        .select("*") \
-        .eq("procesada", False) \
-        .limit(20) \
-        .execute()
+    try:
+        response = supabase.table("noticias") \
+            .select("*") \
+            .eq("procesada", False) \
+            .limit(20) \
+            .execute()
 
-    noticias = response.data
+        noticias = response.data or []
 
-    print(f"Procesando {len(noticias)} noticias...")
+        print(f"Procesando {len(noticias)} noticias...")
 
-    for noticia in noticias:
-        resultado = procesar_noticia(noticia)
+        for noticia in noticias:
+            resultado = procesar_noticia(noticia)
 
-        if resultado:
-            supabase.table("noticias").update({
-                "analisis": resultado["analisis"],
-                "capa": resultado["score"],
-                "titulo": resultado["titulo_es"],
-                "procesada": True
-            }).eq("id", noticia["id"]).execute()
+            if resultado:
+                supabase.table("noticias").update({
+                    "analisis": resultado["analisis"],
+                    "capa": resultado["score"],
+                    "titulo": resultado["titulo_es"],
+                    "procesada": True
+                }).eq("id", noticia["id"]).execute()
 
-            print(f"✔ Procesada: {noticia['titulo']}")
+                print(f"✔ Procesada: {noticia.get('titulo')}")
+
+    except Exception as e:
+        print("ERROR GENERAL MAIN:", e)
 
 
 if __name__ == "__main__":
