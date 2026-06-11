@@ -1,216 +1,171 @@
 import os
-import sys
-import json
-import re
-import logging
 import requests
 from supabase import create_client
 
-# ---------------- CONFIG ----------------
+# ==============================
+# CONFIG
+# ==============================
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
-
-if not all([SUPABASE_URL, SUPABASE_KEY, CLAUDE_API_KEY]):
-print("❌ ERROR: Faltan variables de entorno")
-sys.exit(1)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
-MODEL = "claude-sonnet-4-5-20251001"  # más fiable que haiku
-
-MAX_NOTICIAS = 20
-
-logging.basicConfig(level=logging.INFO)
-
-# ---------------- PROMPT ----------------
-
-PROMPT = """Actúa como un analista geopolítico senior.
-
-IMPORTANTE:
-
-* Devuelve SOLO JSON válido
-* SIN texto fuera del JSON
-* Si fallas, el sistema se rompe
-
-Formato obligatorio:
-
-{
-"analisis_global": "texto (mínimo 300 palabras)",
-"impacto_espana": "texto",
-"bolsillo_ciudadano": "texto",
-"score_gravedad": 20
-}
-"""
-
-# ---------------- FUNCIONES ----------------
-
-def obtener_noticias():
-logging.info("📡 Descargando noticias...")
-
-```
-res = supabase.table("noticias")\
-    .select("*")\
-    .order("id", desc=True)\
-    .limit(50)\
-    .execute()
-
-return res.data or []
-```
-
-def filtrar_pendientes(noticias):
-pendientes = [n for n in noticias if not n.get("procesada")]
-logging.info(f"🧹 Pendientes: {len(pendientes)}")
-return pendientes[:MAX_NOTICIAS]
-
-def construir_bloque(noticias):
-texto = ""
-
-```
-for n in noticias:
-    texto += f"""
-```
-
---- NOTICIA ID: {n.get('id')} ---
-TITULAR: {n.get('titulo', '')}
-FUENTE: {n.get('fuente', '')}
-REGION: {n.get('region', '')}
-RESUMEN: {n.get('resumen', '')}
-"""
-
-```
-return texto
-```
-
-def llamar_claude(texto):
-logging.info("🤖 Llamando a Claude...")
-
-```
-headers = {
+HEADERS = {
     "x-api-key": CLAUDE_API_KEY,
     "anthropic-version": "2023-06-01",
     "content-type": "application/json"
 }
 
-body = {
-    "model": MODEL,
-    "max_tokens": 3000,
-    "temperature": 0.3,
-    "messages": [
-        {
-            "role": "user",
-            "content": PROMPT + "\n\nNOTICIAS:\n" + texto
+# ==============================
+# FUNCIONES CLAUDE
+# ==============================
+
+def llamar_claude(modelo, prompt):
+    data = {
+        "model": modelo,
+        "max_tokens": 800,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
+    return response.json()["content"][0]["text"]
+
+
+# ==============================
+# PROMPTS
+# ==============================
+
+def prompt_haiku(noticia):
+    return f"""
+Analiza esta noticia geopolítica y económica.
+
+TITULAR: {noticia['titulo']}
+FUENTE: {noticia['fuente']}
+REGIÓN: {noticia['region']}
+
+Responde SIEMPRE en este formato XML:
+
+<titulo_es>Traducción al español</titulo_es>
+
+<nivel_impacto>1-5</nivel_impacto>
+
+<analisis>
+1. ¿Por qué está pasando esto realmente?
+2. ¿Cómo afecta a España?
+3. ¿Cómo afecta al ciudadano medio?
+</analisis>
+"""
+
+
+def prompt_sonnet(noticia):
+    return f"""
+Eres un analista geopolítico senior.
+
+Analiza en profundidad esta noticia:
+
+TITULAR: {noticia['titulo']}
+REGIÓN: {noticia['region']}
+
+Haz un análisis AVANZADO:
+
+- Explica causas ocultas
+- Conecta con dinámicas globales
+- Identifica consecuencias indirectas
+- Evalúa impacto real para España (corto y medio plazo)
+
+Formato:
+
+<analisis_profundo>
+Texto claro, directo y sin relleno.
+</analisis_profundo>
+"""
+
+
+# ==============================
+# PROCESAMIENTO
+# ==============================
+
+def procesar_noticia(noticia):
+    try:
+        # 🟢 1. HAiku (base)
+        resultado_haiku = llamar_claude(
+            "claude-3-5-haiku-latest",
+            prompt_haiku(noticia)
+        )
+
+        # Extraer nivel impacto (simple)
+        nivel = extraer_tag(resultado_haiku, "nivel_impacto")
+        score = int(nivel) * 5
+
+        analisis_final = resultado_haiku
+
+        # 🔵 2. SONNET solo si importante
+        if score >= 20:
+            resultado_sonnet = llamar_claude(
+                "claude-3-5-sonnet-latest",
+                prompt_sonnet(noticia)
+            )
+
+            analisis_final += "\n\n" + resultado_sonnet
+
+        return {
+            "analisis": analisis_final,
+            "score": score,
+            "titulo_es": extraer_tag(resultado_haiku, "titulo_es")
         }
-    ]
-}
 
-response = requests.post(CLAUDE_URL, headers=headers, json=body, timeout=30)
+    except Exception as e:
+        print("Error:", e)
+        return None
 
-if response.status_code != 200:
-    logging.error(response.text)
-    raise Exception("Error en API Claude")
 
-data = response.json()
+# ==============================
+# UTILIDADES
+# ==============================
 
-if "content" not in data:
-    raise Exception("Respuesta inválida de Claude")
+def extraer_tag(texto, tag):
+    try:
+        inicio = texto.split(f"<{tag}>")[1]
+        return inicio.split(f"</{tag}>")[0].strip()
+    except:
+        return ""
 
-return data["content"][0].get("text", "").strip()
-```
 
-def extraer_json(texto):
-try:
-return json.loads(texto)
-except:
-match = re.search(r"{.*?}", texto, re.DOTALL)
-if match:
-return json.loads(match.group(0))
-raise Exception("No se pudo parsear JSON")
-
-def validar_json(data):
-keys = ["analisis_global", "impacto_espana", "bolsillo_ciudadano", "score_gravedad"]
-
-```
-for k in keys:
-    if k not in data:
-        raise Exception(f"Falta clave: {k}")
-```
-
-def guardar_resultado(data, noticias):
-logging.info("💾 Guardando resultado...")
-
-```
-analisis = f"""### 1. CONTEXTO GLOBAL
-```
-
-{data["analisis_global"]}
-
-### 2. IMPACTO EN ESPAÑA
-
-{data["impacto_espana"]}
-
-### 3. IMPACTO EN TU VIDA
-
-{data["bolsillo_ciudadano"]}"""
-
-```
-score = int(data.get("score_gravedad", 10))
-
-# 👉 Usamos la primera noticia como contenedor (simple)
-main_id = noticias[0]["id"]
-
-supabase.table("noticias").update({
-    "titulo": "INFORME GEOECONÓMICO AUTOMÁTICO",
-    "analisis": analisis,
-    "capa": score,
-    "procesada": True
-}).eq("id", main_id).execute()
-
-# marcar resto como procesadas
-for n in noticias:
-    if n["id"] != main_id:
-        supabase.table("noticias").update({
-            "procesada": True,
-            "capa": 0
-        }).eq("id", n["id"]).execute()
-```
-
-# ---------------- MAIN ----------------
+# ==============================
+# MAIN
+# ==============================
 
 def main():
-try:
-noticias = obtener_noticias()
+    # Obtener noticias sin procesar
+    response = supabase.table("noticias") \
+        .select("*") \
+        .eq("procesada", False) \
+        .limit(20) \
+        .execute()
 
-```
-    if not noticias:
-        logging.info("⚠️ No hay noticias")
-        return
+    noticias = response.data
 
-    pendientes = filtrar_pendientes(noticias)
+    print(f"Procesando {len(noticias)} noticias...")
 
-    if not pendientes:
-        logging.info("✅ Nada nuevo que procesar")
-        return
+    for noticia in noticias:
+        resultado = procesar_noticia(noticia)
 
-    bloque = construir_bloque(pendientes)
+        if resultado:
+            supabase.table("noticias").update({
+                "analisis": resultado["analisis"],
+                "capa": resultado["score"],
+                "titulo": resultado["titulo_es"],
+                "procesada": True
+            }).eq("id", noticia["id"]).execute()
 
-    respuesta = llamar_claude(bloque)
+            print(f"✔ Procesada: {noticia['titulo']}")
 
-    data = extraer_json(respuesta)
 
-    validar_json(data)
-
-    guardar_resultado(data, pendientes)
-
-    logging.info("🚀 TODO OK")
-
-except Exception as e:
-    logging.error(f"💥 ERROR REAL: {e}")
-    sys.exit(1)
-```
-
-if **name** == "**main**":
-main()
+if __name__ == "__main__":
+    main()
