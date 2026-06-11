@@ -34,7 +34,25 @@ def llamar_claude(modelo, prompt):
     }
 
     response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
-    return response.json()["content"][0]["text"]
+   def llamar_claude(modelo, prompt):
+    data = {
+        "model": modelo,
+        "max_tokens": 800,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    response = requests.post(CLAUDE_URL, headers=HEADERS, json=data)
+
+    print("STATUS:", response.status_code)
+    print("RAW RESPONSE:", response.text)
+
+    try:
+        return response.json()["content"][0]["text"]
+    except Exception as e:
+        print("ERROR PARSEANDO CLAUDE:", e)
+        return None
 
 
 # ==============================
