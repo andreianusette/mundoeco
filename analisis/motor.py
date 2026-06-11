@@ -1,155 +1,216 @@
 import os
+import sys
 import json
 import re
+import logging
 import requests
 from supabase import create_client
 
-# Configuración segura de credenciales
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
+# ---------------- CONFIG ----------------
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
+
+if not all([SUPABASE_URL, SUPABASE_KEY, CLAUDE_API_KEY]):
+print("❌ ERROR: Faltan variables de entorno")
+sys.exit(1)
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 
-PROMPT_SISTEMA_MASIVO = """Actúa como un analista geopolítico senior y estratega macroeconómico para el gobierno de España y la UE. 
-Tu misión es recibir un lote masivo de noticias del día, conectar los puntos entre ellas, descartar el ruido (deportes, corazón, sucesos internos irrelevantes) y aislar los eventos de VERDADERO IMPACTO estructural.
+MODEL = "claude-sonnet-4-5-20251001"  # más fiable que haiku
 
-Debes devolver obligatoriamente un JSON puro y duro, sin introducciones, sin bloques de código markdown, ni texto explicativo. Solo el objeto JSON con esta estructura exacta:
+MAX_NOTICIAS = 20
+
+logging.basicConfig(level=logging.INFO)
+
+# ---------------- PROMPT ----------------
+
+PROMPT = """Actúa como un analista geopolítico senior.
+
+IMPORTANTE:
+
+* Devuelve SOLO JSON válido
+* SIN texto fuera del JSON
+* Si fallas, el sistema se rompe
+
+Formato obligatorio:
 
 {
-  "analisis_global": "Redacta aquí un informe geopolítico unificado y crudo (mínimo 300 palabras). No analices las noticias de una en una; conecta los datos. Explica qué intereses ocultos se están moviendo hoy en el tablero internacional, cómo se cruzan las distintas noticias del lote y qué hilos económicos se están tensando.",
-  "impacto_espana": "Explica detalladamente cómo este conjunto de eventos afecta a los vectores críticos de España (rutas de suministro, inflación en la Eurozona, coste de la energía o seguridad en la frontera sur).",
-  "bolsillo_ciudadano": "Traduce toda la macroeconomía anterior al bolsillo del ciudadano español de a pie (hipotecas, facturas, empleo, cesta de la compra).",
-  "score_gravedad": 20
-}"""
+"analisis_global": "texto (mínimo 300 palabras)",
+"impacto_espana": "texto",
+"bolsillo_ciudadano": "texto",
+"score_gravedad": 20
+}
+"""
 
-def procesar_bloque_noticias():
-    try:
-        print("DEBUG 1: Conectando a Supabase para descargar noticias...")
-        resultado = supabase.table("noticias")\
-            .select("id, titulo, fuente, resumen, region, procesada")\
-            .order("id", desc=True)\
-            .limit(50)\
-            .execute()
+# ---------------- FUNCIONES ----------------
 
-        todas = resultado.data
-        if not todas:
-            print("✗ ERROR: No se pudieron descargar noticias de Supabase.")
-            return
-            
-        print(f"DEBUG 2: Descargadas {len(todas)} noticias del pool de Supabase.")
-        
-        # Filtro seguro en Python para evitar problemas de formato de base de datos
-        pendientes = []
-        for n in todas:
-            estado = str(n.get('procesada', '')).lower().strip()
-            if estado in ['false', 'f', '0', 'none', '']:
-                pendientes.append(n)
+def obtener_noticias():
+logging.info("📡 Descargando noticias...")
 
-        print(f"DEBUG 3: Noticias pendientes detectadas para contexto: {len(pendientes)}")
+```
+res = supabase.table("noticias")\
+    .select("*")\
+    .order("id", desc=True)\
+    .limit(50)\
+    .execute()
 
-        if len(pendientes) == 0:
-            print("✓ INFO: No hay material nuevo para analizar. Terminando de forma limpia.")
-            return
+return res.data or []
+```
 
-        # Limitamos el bloque a procesar a un máximo de 20 noticias por tanda para no agotar la ventana de contexto
-        lote_procesar = pendientes[:20]
-        print(f"DEBUG 4: Seleccionadas {len(lote_procesar)} noticias para enviar a Claude Sonnet.")
+def filtrar_pendientes(noticias):
+pendientes = [n for n in noticias if not n.get("procesada")]
+logging.info(f"🧹 Pendientes: {len(pendientes)}")
+return pendientes[:MAX_NOTICIAS]
 
-        bloque_noticias_texto = ""
-        for n in lote_procesar:
-            tit = n.get('titulo') or "Sin título"
-            fuente = n.get('fuente') or "Fuente desconocida"
-            reg = n.get('region') or "global"
-            res = n.get('resumen') or "Sin resumen disponible"
-            
-            bloque_noticias_texto += f"--- NOTICIA ID: {n['id']} ---\n"
-            bloque_noticias_texto += f"TITULAR: {tit}\n"
-            bloque_noticias_texto += f"FUENTE: {fuente} | REGIÓN: {reg}\n"
-            bloque_noticias_texto += f"RESUMEN: {res}\n\n"
+def construir_bloque(noticias):
+texto = ""
 
-        # Preparación de la llamada a la API Oficial de Claude
-        headers = {
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
+```
+for n in noticias:
+    texto += f"""
+```
+
+--- NOTICIA ID: {n.get('id')} ---
+TITULAR: {n.get('titulo', '')}
+FUENTE: {n.get('fuente', '')}
+REGION: {n.get('region', '')}
+RESUMEN: {n.get('resumen', '')}
+"""
+
+```
+return texto
+```
+
+def llamar_claude(texto):
+logging.info("🤖 Llamando a Claude...")
+
+```
+headers = {
+    "x-api-key": CLAUDE_API_KEY,
+    "anthropic-version": "2023-06-01",
+    "content-type": "application/json"
+}
+
+body = {
+    "model": MODEL,
+    "max_tokens": 3000,
+    "temperature": 0.3,
+    "messages": [
+        {
+            "role": "user",
+            "content": PROMPT + "\n\nNOTICIAS:\n" + texto
         }
+    ]
+}
 
-        # Actualizado con el modelo activo de 2026: claude-haiku
-        body = {
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 3000,
-            "temperature": 0.3,
-            "messages": [
-                {"role": "user", "content": PROMPT_SISTEMA_MASIVO + "\n\nAquí tienes el lote de noticias del día:\n\n" + bloque_noticias_texto}
-            ]
-        }
+response = requests.post(CLAUDE_URL, headers=headers, json=body, timeout=30)
 
-        print("DEBUG 5: Enviando bloque de noticias a Claude 3.5 Sonnet...")
-        response = requests.post(CLAUDE_URL, headers=headers, json=body)
-        
-        if response.status_code != 200:
-            print(f"✗ ERROR DE API CLAUDE (Código {response.status_code}): {response.text}")
-            sys.exit(1)
+if response.status_code != 200:
+    logging.error(response.text)
+    raise Exception("Error en API Claude")
 
-        respuesta_texto = response.json()["content"][0].get("text", "").strip()
-        print("DEBUG 6: Respuesta de Claude recibida con éxito. Iniciando limpieza de formato...")
-        
-        # Representamos comillas invertidas con códigos hexadecimales (\x60) para evitar colisiones
-        comillas_markdown = "\x60\x60\x60"
-        
-        if comillas_markdown in respuesta_texto:
-            match = re.search(r"\{.*\}", respuesta_texto, re.DOTALL)
-            if match:
-                respuesta_texto = match.group(0).strip()
+data = response.json()
 
-        try:
-            data_analisis = json.loads(respuesta_texto)
-            print("DEBUG 7: JSON parseado correctamente en un diccionario de Python.")
-        except Exception as json_err:
-            print(f"DEBUG 7 - ALERTA: Error parseando JSON directo. Texto recibido: {respuesta_texto[:250]}")
-            match_llaves = re.search(r"(\{.*\})", respuesta_texto, re.DOTALL)
-            if match_llaves:
-                data_analisis = json.loads(match_llaves.group(1))
-                print("DEBUG 7 - RESCATE: JSON extraído con éxito de las llaves.")
-            else:
-                raise json_err
+if "content" not in data:
+    raise Exception("Respuesta inválida de Claude")
 
-        analisis_formateado = f"""### 1. ¿POR QUE ESTA PASANDO ESTO REALMENTE?
-{data_analisis.get('analisis_global', 'No disponible')}
+return data["content"][0].get("text", "").strip()
+```
 
-### 2. ¿COMO AFECTA A ESPAÑA?
-{data_analisis.get('impacto_espana', 'No disponible')}
+def extraer_json(texto):
+try:
+return json.loads(texto)
+except:
+match = re.search(r"{.*?}", texto, re.DOTALL)
+if match:
+return json.loads(match.group(0))
+raise Exception("No se pudo parsear JSON")
 
-### 3. ¿COMO ME AFECTA A MI EN PARTICULAR?
-{data_analisis.get('bolsillo_ciudadano', 'No disponible')}"""
+def validar_json(data):
+keys = ["analisis_global", "impacto_espana", "bolsillo_ciudadano", "score_gravedad"]
 
-        score = str(data_analisis.get('score_gravedad', 15))
-        
-        # Publicamos el informe global en el primer registro libre de la base de datos para liderar la portada
-        id_principal = lote_procesar[0]['id']
-        titulo_portada = "INFORME GEOPOLÍTICO: Análisis de situación y riesgo macroeconómico"
-        
-        print(f"DEBUG 8: Guardando el mega análisis en la noticia portada ID {id_principal} con Score {score}/25...")
+```
+for k in keys:
+    if k not in data:
+        raise Exception(f"Falta clave: {k}")
+```
+
+def guardar_resultado(data, noticias):
+logging.info("💾 Guardando resultado...")
+
+```
+analisis = f"""### 1. CONTEXTO GLOBAL
+```
+
+{data["analisis_global"]}
+
+### 2. IMPACTO EN ESPAÑA
+
+{data["impacto_espana"]}
+
+### 3. IMPACTO EN TU VIDA
+
+{data["bolsillo_ciudadano"]}"""
+
+```
+score = int(data.get("score_gravedad", 10))
+
+# 👉 Usamos la primera noticia como contenedor (simple)
+main_id = noticias[0]["id"]
+
+supabase.table("noticias").update({
+    "titulo": "INFORME GEOECONÓMICO AUTOMÁTICO",
+    "analisis": analisis,
+    "capa": score,
+    "procesada": True
+}).eq("id", main_id).execute()
+
+# marcar resto como procesadas
+for n in noticias:
+    if n["id"] != main_id:
         supabase.table("noticias").update({
-            "titulo": titulo_portada,
-            "analisis": analisis_formateado,
-            "capa": score,
-            "procesada": True
-        }).eq("id", id_principal).execute()
+            "procesada": True,
+            "capa": 0
+        }).eq("id", n["id"]).execute()
+```
 
-        # Marcamos como procesadas y con puntuación cero el resto de noticias para que salgan del radar de portada
-        print("DEBUG 9: Marcando el resto de noticias del lote como procesadas en Supabase...")
-        for n in lote_procesar:
-            if n['id'] != id_principal:
-                supabase.table("noticias").update({"procesada": True, "capa": "0"}).eq("id", n['id']).execute()
-        
-        print(f"✓ ÉXITO ROTUNDO: Base de datos sincronizada. Portada activa en ID {id_principal}.")
+# ---------------- MAIN ----------------
 
-    except Exception as e:
-        print(f"✗ CRASH REAL DEL SCRIPT: {e}")
-        sys.exit(1) # Forzamos que GitHub Actions se ponga en ROJO si algo falla
+def main():
+try:
+noticias = obtener_noticias()
 
-if __name__ == "__main__":
-    procesar_bloque_noticias()
+```
+    if not noticias:
+        logging.info("⚠️ No hay noticias")
+        return
+
+    pendientes = filtrar_pendientes(noticias)
+
+    if not pendientes:
+        logging.info("✅ Nada nuevo que procesar")
+        return
+
+    bloque = construir_bloque(pendientes)
+
+    respuesta = llamar_claude(bloque)
+
+    data = extraer_json(respuesta)
+
+    validar_json(data)
+
+    guardar_resultado(data, pendientes)
+
+    logging.info("🚀 TODO OK")
+
+except Exception as e:
+    logging.error(f"💥 ERROR REAL: {e}")
+    sys.exit(1)
+```
+
+if **name** == "**main**":
+main()
