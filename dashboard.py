@@ -41,7 +41,7 @@ vista = st.sidebar.radio(
 def cargar_noticias():
     resultado = supabase.table("noticias")\
         .select("*")\
-        .order("fecha", desc=True)\
+        .order("id", desc=True)\
         .limit(300)\
         .execute()
     return resultado.data
