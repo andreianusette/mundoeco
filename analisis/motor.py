@@ -52,7 +52,7 @@ RESUMEN: {noticia['resumen']}"""
     }
 
     body = {
-        "model": "claude-3-haiku-20240307",
+        "model": "claude-3-5-haiku-latest",
         "max_tokens": 1000,
         "temperature": 0.2, # Bajamos la temperatura para que sea más estricto con el formato
         "messages": [{"role": "user", "content": PROMPT_SISTEMA + "\n\n" + prompt}]
