@@ -10,7 +10,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-CLAUDE_URL = "https://api.anthropic.com/v1/messages"
+CLAUDE_URL = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)"
 
 PROMPT_SISTEMA_MASIVO = """Actúa como un analista geopolítico senior y estratega macroeconómico para el gobierno de España y la UE. 
 Tu misión es recibir un lote masivo de noticias del día, conectar los puntos entre ellas, descartar el ruido (deportes, corazón, sucesos internos irrelevantes) y aislar los eventos de VERDADERO IMPACTO estructural.
@@ -113,17 +113,17 @@ def procesar_bloque_noticias():
 
         print("✓ Análisis masivo de contexto completado con éxito.")
 
-        analisis_formateado = f"""### 1. ¿POR QUÉ ESTÁ PASANDO ESTO REALMENTE?
+        analisis_formateado = f"""### 1. ¿POR QUE ESTA PASANDO ESTO REALMENTE?
 {data_analisis.get('analisis_global', 'No disponible')}
 
-### 2. ¿CÓMO AFECTA A ESPAÑA?
+### 2. ¿COMO AFECTA A ESPAÑA?
 {data_analisis.get('impacto_espana', 'No disponible')}
 
-### 3. ¿CÓMO ME AFECTA A MÍ EN PARTICULAR?
+### 3. ¿COMO ME AFECTA A MI EN PARTICULAR?
 {data_analisis.get('bolsillo_ciudadano', 'No disponible')}"""
 
         score = str(data_analisis.get('score_gravedad', 15))
-        ids_utilizados = data_analisis.get('noticias_procesadas_ids', [n['id'] for n in pendientes])
+        ids_utilizados = data_analisis.get('noticias_processed_ids', [n['id'] for n in pendientes])
 
         # Publicamos el informe global en el primer registro libre de la base de datos para liderar la portada
         id_principal = pendientes[0]['id']
@@ -148,5 +148,3 @@ def procesar_bloque_noticias():
 
 if __name__ == "__main__":
     procesar_bloque_noticias()
-```
-`
