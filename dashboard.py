@@ -34,9 +34,26 @@ vista = st.sidebar.radio(
     ["📋 Lectura Rápida", "🔍 Explorar Todas", "🏷️ Por Región", "📊 Estadísticas"]
 )
 
-# MEJORA FRONTLEND: Forzamos a Supabase a traer solo las 300 noticias MÁS RECIENTES.
-# Tu base de datos sigue guardando las miles de noticias de tu corpus intactas,
-# pero la web solo lee y procesa el bloque fresco para no saturar el navegador.
+# Función para formatear la fecha de forma bonita
+def formatear_fecha(fecha_str):
+    if not fecha_str:
+        return "Fecha desconocida"
+    try:
+        # Intenta parsear el formato estándar de base de datos (ISO)
+        # Cortamos microsegundos o zonas horarias si vienen integradas
+        clean_date = fecha_str.split(".")[0].split("+")[0]
+        dt = datetime.strptime(clean_date, "%Y-%m-%dT%H:%M:%S")
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        try:
+            # Formato alternativo si viene con espacio en vez de T
+            clean_date = fecha_str.split(".")[0].split("+")[0]
+            dt = datetime.strptime(clean_date, "%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            # Si falla todo, devuelve los primeros 16 caracteres (YYYY-MM-DD HH:MM)
+            return str(fecha_str)[:16].replace("T", " ")
+
 @st.cache_data(ttl=300)
 def cargar_noticias():
     resultado = supabase.table("noticias")\
@@ -62,11 +79,10 @@ if not noticias:
     st.warning("No hay noticias aún. Espera a que se ejecute la ingesta.")
 else:
     
-    # VISTA 1: Lectura Rápida (Adaptada al nuevo motor)
+    # VISTA 1: Lectura Rápida
     if vista == "📋 Lectura Rápida":
         st.subheader("Análisis estratégico del día para España")
         
-        # Filtra las noticias que ya tienen el nuevo análisis listo
         noticias_analizadas = [n for n in noticias if n.get('procesada') and n.get('analisis')][:8]
         
         if not noticias_analizadas:
@@ -74,12 +90,15 @@ else:
         else:
             for noticia in noticias_analizadas:
                 with st.container(border=True):
-                    # Eliminamos la columna de la métrica 'capa' para dar espacio a un diseño más limpio
-                    st.markdown(f"### {noticia['titulo']}")
-                    st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()}")
+                    # MEJORA 1: Muestra el título traducido si existe, si no el original
+                    titulo_mostrar = noticia.get('titulo_es') if noticia.get('titulo_es') else noticia['titulo']
+                    st.markdown(f"### {titulo_mostrar}")
+                    
+                    # MEJORA 2: Inclusión de Fecha y Hora en los créditos
+                    fecha_bonita = formatear_fecha(noticia.get('fecha'))
+                    st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()} | 🕒 {fecha_bonita}")
                     st.markdown("---")
                     
-                    # Mostrar las 3 preguntas con el formato dinámico y limpio en párrafos
                     analisis_text = noticia['analisis']
                     st.markdown(f"""
 <div style="font-size: 0.95rem; line-height: 1.6; text-align: justify;">
@@ -111,7 +130,6 @@ else:
                 ["Todas", "Con análisis", "Sin análisis"]
             )
         
-        # Aplicar filtros sobre la marcha
         noticias_filtered = noticias
         if filtro_fuente:
             noticias_filtered = [n for n in noticias_filtered if n['fuente'] in filtro_fuente]
@@ -126,9 +144,12 @@ else:
         
         for noticia in noticias_filtered:
             with st.container(border=True):
-                st.markdown(f"**{noticia['titulo']}**")
+                titulo_mostrar = noticia.get('titulo_es') if noticia.get('titulo_es') else noticia['titulo']
+                st.markdown(f"**{titulo_mostrar}**")
+                
                 col1, col2, col3 = st.columns(3)
-                col1.caption(f"📰 {noticia['fuente']}")
+                fecha_bonita = formatear_fecha(noticia.get('fecha'))
+                col1.caption(f"📰 {noticia['fuente']} | 🕒 {fecha_bonita}")
                 col2.caption(f"🌍 {noticia['region']}")
                 col3.caption(f"{'✅ Analizado' if noticia.get('procesada') else '⏳ Pendiente'}")
                 
@@ -147,7 +168,8 @@ else:
             noticias_region = [n for n in noticias if n['region'] == region]
             with st.expander(f"**{region.upper()}** ({len(noticias_region)} noticias recientes)"):
                 for noticia in noticias_region[:5]:
-                    st.markdown(f"- **{noticia['titulo']}** ({noticia['fuente']})")
+                    titulo_mostrar = noticia.get('titulo_es') if noticia.get('titulo_es') else noticia['titulo']
+                    st.markdown(f"- **{titulo_mostrar}** ({noticia['fuente']})")
                     if noticia.get('procesada') and noticia.get('analisis'):
                         st.caption(noticia['analisis'][:200] + "...")
     
