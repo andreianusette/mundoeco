@@ -32,7 +32,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python ingesta/rss_fetch.py
 
-      - name: Paso 2 - Analisis Geopolitico Inmediato (Claude Haiku)
+      - name: Paso 2 - Analisis Geopolitico Inmediato (Claude Sonnet)
         if: success() # Solo se ejecuta si el paso anterior terminó sin errores
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
