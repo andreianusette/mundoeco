@@ -76,9 +76,9 @@ def procesar_bloque_noticias():
             "content-type": "application/json"
         }
 
-        # Actualizado con el modelo activo de 2026: claude-sonnet-4-6
+        # Actualizado con el modelo activo de 2026: claude-haiku
         body = {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
             "max_tokens": 3000,
             "temperature": 0.3,
             "messages": [
