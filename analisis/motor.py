@@ -54,7 +54,7 @@ RESUMEN: {noticia['resumen']}"""
     body = {
         "model": "claude-3-5-haiku-latest",
         "max_tokens": 1000,
-        "temperature": 0.2, # Bajamos la temperatura para que sea más estricto con el formato
+        "temperature": 0.2,
         "messages": [{"role": "user", "content": PROMPT_SISTEMA + "\n\n" + prompt}]
     }
 
@@ -62,28 +62,38 @@ RESUMEN: {noticia['resumen']}"""
         response = requests.post(CLAUDE_URL, headers=headers, json=body)
         data = response.json()
         
-        if "error" in data:
-            print(f"  Error Claude: {data['error']['message']}")
+        # Verificación estricta de errores HTTP o de API
+        if response.status_code != 200:
+            msg_error = data.get("error", {}).get("message", "Error desconocido")
+            print(f"  Error de API Anthropic (Código {response.status_code}): {msg_error}")
+            return None, None, None
+            
+        # Extracción segura del texto según la estructura oficial de Anthropic
+        if "content" in data and len(data["content"]) > 0:
+            texto_completo = data["content"][0].get("text", "")
+        else:
+            print("  Error: Estructura de respuesta inesperada en el JSON de Claude.")
             return None, None, None
         
-        texto_completo = data["content"][0]["text"]
-        
+        if not texto_completo:
+            print("  Error: El modelo devolvió un texto vacío.")
+            return None, None, None
+            
         titulo_es = None
-        score_final = "5" # Puntuación por defecto si falla
+        score_final = "5"
         
         # 1. Extraer Título Traducido
         match_tit = re.search(r"<titulo_es>(.*?)</titulo_es>", texto_completo, re.DOTALL)
         if match_tit:
             titulo_es = match_tit.group(1).strip()
             
-        # 2. Extraer Nivel (1 al 5) y multiplicarlo por 5 para llevarlo a la escala 1-25
+        # 2. Extraer Nivel (1 al 5) y multiplicarlo por 5
         match_niv = re.search(r"<nivel_impacto>(.*?)</nivel_impacto>", texto_completo, re.DOTALL)
         if match_niv:
             try:
                 nivel = int(match_niv.group(1).strip())
-                # Forzamos que esté entre 1 y 5
                 nivel = max(1, min(5, nivel))
-                score_final = str(nivel * 5) # 1->5, 2->10, 3->15, 4->20, 5->25
+                score_final = str(nivel * 5)
             except:
                 score_final = "10"
                 
@@ -92,14 +102,13 @@ RESUMEN: {noticia['resumen']}"""
         if match_ana:
             analisis_limpio = match_ana.group(1).strip()
         else:
-            # Plan B por si no pone la etiqueta del análisis pero sí las otras
             analisis_limpio = re.sub(r"<titulo_es>.*?</titulo_es>", "", texto_completo, flags=re.DOTALL)
             analisis_limpio = re.sub(r"<nivel_impacto>.*?</nivel_impacto>", "", analisis_limpio, flags=re.DOTALL).strip()
             
         return titulo_es, score_final, analisis_limpio
         
     except Exception as e:
-        print(f"✗ Error llamando a Claude: {e}")
+        print(f"✗ Error excepcional llamando a Claude: {e}")
         return None, None, None
 
 def procesar_noticias():
@@ -111,7 +120,9 @@ def procesar_noticias():
     noticias = resultado.data
     print(f"Noticias pendientes de analizar: {len(noticias)}")
 
-    for noticia in noticias:
+    # Limitamos a un máximo de 15 noticias por ejecución para evitar que GitHub Actions 
+    # se quede colgado por tiempo si intenta procesar las 91 de golpe en un solo lote
+    for noticia in noticias[:15]:
         print(f"\nAnalizando: {noticia['titulo'][:60]}...")
         titulo_es, score, analisis = analizar_noticia(noticia)
 
@@ -121,7 +132,6 @@ def procesar_noticias():
                 "capa": score, 
                 "procesada": True
             }
-            # Sobreescribimos la columna 'titulo' original con la versión en español limpia
             if titulo_es:
                 datos_update["titulo"] = titulo_es
                 
