@@ -1,0 +1,41 @@
+```yaml
+name: MundoEco - Ingesta y Analisis Automatizado
+
+on:
+  schedule:
+    # Se ejecuta 3 veces al día en horarios estratégicos españoles (ej. 6:00, 14:00, 20:00 UTC)
+    - cron: '0 6 * * *'
+    - cron: '0 14 * * *'
+    - cron: '0 20 * * *'
+  workflow_dispatch: # Permite ejecutar todo el flujo a mano desde GitHub si quieres probar
+
+jobs:
+  proceso_completo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Paso 1 - Ingesta de Noticias RSS
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python ingesta/rss_fetch.py
+
+      - name: Paso 2 - Analisis Geopolitico Inmediato (Claude Haiku)
+        if: success() # Solo se ejecuta si el paso anterior terminó sin errores
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: python analisis/motor.py
