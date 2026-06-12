@@ -9,12 +9,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-    h3 { font-size: 1.2rem !important; }
-    .stMarkdown h3 { font-size: 1.2rem !important; }
-</style>
-""", unsafe_allow_html=True)
+# FUNCIÓN AUXILIAR: Formatea la fecha de Supabase a formato europeo legible (DD/MM/AAAA HH:MM)
+def formatear_fecha_noticia(noticia_obj):
+    fecha_cruda = noticia_obj.get('fecha') or noticia_obj.get('created_at')
+    if not fecha_cruda:
+        return "Fecha no disponible"
+    
+    try:
+        # Si viene en formato ISO de Supabase (ej: 2026-06-12T14:30:00...)
+        if "T" in str(fecha_cruda):
+            fecha_parte, hora_parte = str(fecha_cruda).split("T")
+            hora_bonita = hora_parte[:5]
+            año, mes, día = fecha_parte.split("-")
+            return f"{día}/{mes}/{año} a las {hora_bonita}"
+        # Si viene en formato plano (ej: 2026-06-12 14:30:00)
+        elif " " in str(fecha_cruda):
+            fecha_parte, hora_parte = str(fecha_cruda).split(" ")
+            hora_bonita = hora_parte[:5]
+            año, mes, día = fecha_parte.split("-")
+            return f"{día}/{mes}/{año} a las {hora_bonita}"
+        return str(fecha_cruda)
+    except Exception:
+        return str(fecha_cruda)
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -67,7 +83,9 @@ else:
                     col1, col2 = st.columns([3, 1])
                     with col1:
                         st.markdown(f"### {noticia['titulo']}")
-                        st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()}")
+                        # CAMBIO AQUÍ: Añadida la fecha formateada en la Lectura Rápida
+                        fecha_txt = formatear_fecha_noticia(noticia)
+                        st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()} | 🕒 {fecha_txt}")
                     with col2:
                         st.metric("Puntaje", f"{noticia.get('capa', '?')}/25")
                     
@@ -115,7 +133,10 @@ else:
             with st.container(border=True):
                 st.markdown(f"**{noticia['titulo']}**")
                 col1, col2, col3, col4 = st.columns(4)
-                col1.caption(f"📰 {noticia['fuente']}")
+                
+                # CAMBIO AQUÍ: Añadida la fecha formateada en la pestaña Explorar Todas
+                fecha_txt = formatear_fecha_noticia(noticia)
+                col1.caption(f"📰 {noticia['fuente']} | 🕒 {fecha_txt}")
                 col2.caption(f"🌍 {noticia['region']}")
                 col3.caption(f"{'✅ Analizado' if noticia.get('procesada') else '⏳ Pendiente'}")
                 col4.metric("Puntaje", f"{noticia.get('capa', '?')}/25")
@@ -135,7 +156,8 @@ else:
             if noticias_region:
                 with st.expander(f"**{region.upper()}** ({len(noticias_region)} relevantes)"):
                     for noticia in noticias_region[:5]:
-                        st.markdown(f"- **{noticia['titulo']}** (Puntaje: {noticia.get('capa', '?')})")
+                        fecha_txt = formatear_fecha_noticia(noticia)
+                        st.markdown(f"- **{noticia['titulo']}** (Puntaje: {noticia.get('capa', '?')} | 🕒 {fecha_txt})")
                         if noticia.get('procesada') and noticia.get('analisis'):
                             st.caption(noticia['analisis'][:300] + "...")
     
@@ -173,4 +195,3 @@ else:
 
 st.divider()
 st.caption("MundoEco MVP • Análisis contextualizado para España • Filtrado por impacto geopolítico real")
-EOFDASH
