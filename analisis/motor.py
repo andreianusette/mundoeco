@@ -133,10 +133,6 @@ REGLAS:
 """
 
 def procesar_noticia(noticia):
-    """
-    Procesa TODAS las noticias, devuelve resultado incluso si puntaje < 15.
-    El dashboard filtrará luego (mostrar solo >= 15)
-    """
     try:
         raw = llamar_claude("claude-haiku-4-5-20251001", prompt_haiku(noticia))
         data = parse_json(raw)
@@ -147,13 +143,24 @@ def procesar_noticia(noticia):
 
         puntaje = data.get("puntaje_final", 1)
         categoria = data.get("categoria", "desconocida")
-        analisis_breve = data.get("analisis_breve", "")
         razon = data.get("razon_puntaje", "")
 
         print(f"  Puntaje: {puntaje} | Categoría: {categoria}")
 
-        # Guardar análisis SIEMPRE, sea relevante o no
-        analisis_final = f"""CATEGORÍA: {categoria.upper()}
+        if puntaje < 15:
+            # Si no es relevante, análisis vacío
+            analisis_final = f"""CATEGORÍA: {categoria.upper()}
+PUNTAJE IMPACTO ESPAÑA: {puntaje}/25
+
+VECTORES: S={data.get('impacto_vector_suministro', '?')}/10, E={data.get('impacto_vector_economia', '?')}/10, Seg={data.get('impacto_vector_seguridad', '?')}/10
+
+RAZÓN: {razon}
+
+(No es geopolítica relevante)
+"""
+        else:
+            # Si es relevante, análisis completo con las 3 preguntas
+            analisis_final = f"""CATEGORÍA: {categoria.upper()}
 PUNTAJE IMPACTO ESPAÑA: {puntaje}/25
 
 VECTORES DE IMPACTO:
@@ -162,10 +169,16 @@ VECTORES DE IMPACTO:
 - Seguridad España: {data.get('impacto_vector_seguridad', '?')}/10
 Promedio: {data.get('impacto_españa_promedio', '?')}/10
 
-RAZÓN: {razon}
+---
 
-ANÁLISIS:
-{analisis_breve}
+1️⃣ ¿POR QUÉ ESTÁ PASANDO REALMENTE?
+{data.get('analisis_p1_por_que', '')}
+
+2️⃣ ¿CÓMO AFECTA A ESPAÑA?
+{data.get('analisis_p2_como_afecta', '')}
+
+3️⃣ ¿Y A MÍ?
+{data.get('analisis_p3_y_a_mi', '')}
 """
 
         return {
