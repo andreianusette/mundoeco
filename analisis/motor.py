@@ -59,47 +59,58 @@ def llamar_claude(modelo, prompt):
 
 def prompt_haiku(noticia):
     return f"""
-INSTRUCCIONES ESTRICTAS - NO IMPROVISES
+INSTRUCCIONES ESTRICTAS - ANÁLISIS PROFUNDO
 
-Tu tarea: analizar la noticia y devolver JSON válido. NADA MÁS.
+Tu tarea: analizar la noticia y devolver JSON válido con análisis DETALLADO.
 
 NOTICIA:
 Titular: {noticia.get('titulo','')}
 Resumen: {noticia.get('resumen','')}
 Región: {noticia.get('region','')}
-Fuente: {noticia.get('fuente','')}
 
----PASO 1: CATEGORIZACIÓN (SÍ/NO GEOPOLÍTICA)---
-¿Es esta noticia sobre geopolítica, seguridad, comercio, energía, alianzas internacionales, o impacto económico global?
-- SÍ = Sigue al PASO 2
-- NO (es cultura, deportes, sociedad frívola, entretenimiento) = Puntúa 1 y termina
+---PASO 1: ¿ES GEOPOLÍTICA?---
+¿Trata sobre geopolítica, seguridad, comercio, energía, alianzas, impacto económico global?
+- SÍ → PASO 2
+- NO (cultura, deportes, sociedad) → puntaje 1, fin
 
----PASO 2: IMPACTO ESPAÑA (Si es geopolítica)---
-Evalúa SOLO en estos 3 vectores. SIN INVENTAR:
+---PASO 2: IMPACTO ESPAÑA---
+Evalúa en 3 vectores (0-10 cada uno):
 
-Vector 1: CADENA SUMINISTRO
-- ¿Afecta materias primas, semiconductores, transporte, energía?
-- Puntuación: 0 (no afecta) a 10 (afecta mucho)
+1. CADENA SUMINISTRO: ¿Afecta materias primas, semiconductores, transporte, energía?
+2. ECONOMÍA EUROZONA: ¿Afecta inflación, tipos, comercio, competitividad?
+3. SEGURIDAD ESPAÑA: ¿Afecta OTAN, alianzas, migraciones, estabilidad UE?
 
-Vector 2: ECONOMÍA EUROZONA
-- ¿Afecta inflación, tipos interés, comercio, competitividad?
-- Puntuación: 0 a 10
-
-Vector 3: SEGURIDAD ESPAÑA
-- ¿Afecta OTAN, alianzas, migraciones, estabilidad UE?
-- Puntuación: 0 a 10
-
-Promedio de los 3 vectores = IMPACTO_ESPAÑA (0-10)
+Promedio = IMPACTO_ESPAÑA (0-10)
 
 ---PASO 3: PUNTAJE FINAL---
-Fórmula:
-- Si NO es geopolítica: puntaje = 1
-- Si es geopolítica pero IMPACTO_ESPAÑA < 3: puntaje = 5
-- Si es geopolítica e IMPACTO_ESPAÑA 3-6: puntaje = 15
-- Si es geopolítica e IMPACTO_ESPAÑA > 6: puntaje = 25
+- Si NO es geopolítica: 1
+- Si IMPACTO < 3: 5
+- Si IMPACTO 3-6: 15
+- Si IMPACTO > 6: 25
 
----SALIDA JSON REQUERIDA---
-{{
+---ANÁLISIS DETALLADO (solo si puntaje >= 15)---
+Si el puntaje es >= 15, responde EXACTAMENTE estas 3 preguntas:
+
+P1: ¿POR QUÉ ESTÁ PASANDO REALMENTE?
+- ¿Cuál es el interés de poder o dinero real detrás?
+- ¿Quién gana, quién pierde?
+- ¿Diferencia entre discurso y acción?
+(200-250 palabras)
+
+P2: ¿CÓMO AFECTA A ESPAÑA?
+- Impactos concretos (comercio, energía, inversión, seguridad)
+- Horizonte temporal (3 meses, 1 año, 5 años)
+- Conexiones con los 3 vectores
+(200-250 palabras)
+
+P3: ¿Y A MÍ?
+- Impacto cotidiano (precios, trabajo, hipoteca, ahorros)
+- Empresas IBEX 35 afectadas
+- ¿Debería cambiar inversiones?
+(150-200 palabras)
+
+---SALIDA JSON---
+{
   "es_geopolitica": true/false,
   "categoria": "cultura|deportes|geopolitica|economia|seguridad|otro",
   "impacto_vector_suministro": 0-10,
@@ -107,16 +118,18 @@ Fórmula:
   "impacto_vector_seguridad": 0-10,
   "impacto_españa_promedio": 0-10,
   "puntaje_final": 1,
-  "razon_puntaje": "Explicación breve (máximo 30 palabras)",
-  "analisis_breve": "Si puntaje >= 15, análisis de 2-3 líneas. Si no, escribe: No es geopolítica relevante"
-}}
+  "razon_puntaje": "máximo 50 palabras",
+  "analisis_p1_por_que": "respuesta a P1 (200-250 palabras)",
+  "analisis_p2_como_afecta": "respuesta a P2 (200-250 palabras)",
+  "analisis_p3_y_a_mi": "respuesta a P3 (150-200 palabras)"
+}
 
-REGLAS OBLIGATORIAS:
-1. Devuelve SOLO JSON. Nada de texto extra.
-2. Si no puedes evaluar algo, usa 0, no inventes.
-3. El puntaje SOLO puede ser: 1, 5, 15 ó 25.
-4. Si la noticia no es geopolítica, termina con puntaje 1.
-5. No analices si no tiene impacto en España.
+REGLAS:
+1. SOLO JSON, nada más
+2. Si puntaje < 15, pon vacío en P1, P2, P3: ""
+3. Si puntaje >= 15, TODAS las 3 preguntas deben estar completas
+4. Sé específico, no genérico
+5. Puntaje SOLO: 1, 5, 15 ó 25
 """
 
 def procesar_noticia(noticia):
