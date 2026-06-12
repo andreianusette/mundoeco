@@ -4,10 +4,6 @@ import re
 import requests
 from supabase import create_client
 
-# ==============================
-# CONFIG
-# ==============================
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
@@ -22,10 +18,6 @@ HEADERS = {
     "content-type": "application/json"
 }
 
-# ==============================
-# HELPERS
-# ==============================
-
 def clean_text(texto):
     if not texto:
         return ""
@@ -34,20 +26,13 @@ def clean_text(texto):
     texto = re.sub(r"```", "", texto)
     return texto.strip()
 
-
 def parse_json(texto):
     try:
         texto = clean_text(texto)
         return json.loads(texto)
     except Exception as e:
         print("❌ JSON parse error:", e)
-        print("RAW:", texto)
         return None
-
-
-# ==============================
-# CLAUDE CALL
-# ==============================
 
 def llamar_claude(modelo, prompt):
     try:
@@ -61,27 +46,16 @@ def llamar_claude(modelo, prompt):
             }
         )
 
-        print("STATUS:", response.status_code)
-        print("RAW RESPONSE:", response.text)
-
         response.raise_for_status()
-
         data = response.json()
-
         content = data.get("content", [])
         if not content:
             return None
-
         return content[0].get("text", "")
 
     except Exception as e:
         print("❌ Claude error:", e)
         return None
-
-
-# ==============================
-# PROMPTS (JSON FORZADO)
-# ==============================
 
 def prompt_haiku(noticia):
     return f"""
@@ -100,27 +74,9 @@ REGION:
 {noticia.get('region','')}
 """
 
-
-def prompt_sonnet(noticia):
-    return f"""
-Devuelve SOLO JSON válido.
-
-{{
-  "analisis_profundo": "texto claro sin relleno"
-}}
-
-NOTICIA:
-{noticia.get('titulo','')}
-"""
-
-
-# ==============================
-# PROCESO
-# ==============================
-
 def procesar_noticia(noticia):
     try:
-        raw = llamar_claude("claude-3-5-haiku-20240307", prompt_haiku(noticia))
+        raw = llamar_claude("claude-haiku-4-5-20251001", prompt_haiku(noticia))
         data = parse_json(raw)
 
         if not data:
@@ -136,17 +92,8 @@ def procesar_noticia(noticia):
 
         analisis = data.get("analisis", "")
 
-        # 🔥 blindaje extra
         if not analisis:
             analisis = "Sin análisis disponible"
-
-        # SONNET solo si relevante
-        if score >= 20:
-            raw2 = llamar_claude("claude-3-5-sonnet-20241022", prompt_sonnet(noticia))
-            data2 = parse_json(raw2)
-
-            if data2 and data2.get("analisis_profundo"):
-                analisis += "\n\n" + data2["analisis_profundo"]
 
         return {
             "analisis": analisis,
@@ -157,11 +104,6 @@ def procesar_noticia(noticia):
     except Exception as e:
         print("❌ Procesamiento error:", e)
         return None
-
-
-# ==============================
-# MAIN
-# ==============================
 
 def main():
     try:
@@ -184,7 +126,6 @@ def main():
                 print("⚠️ Skip noticia")
                 continue
 
-            # 🔥 UPDATE blindado
             res = supabase.table("noticias").update({
                 "analisis": resultado["analisis"],
                 "capa": resultado["score"],
@@ -192,11 +133,10 @@ def main():
                 "procesada": True
             }).eq("id", noticia["id"]).execute()
 
-            print("✔ UPDATE:", res)
+            print("✔ UPDATE OK")
 
     except Exception as e:
         print("❌ MAIN ERROR:", e)
-
 
 if __name__ == "__main__":
     main()
