@@ -2,16 +2,11 @@ import os
 import json
 import re
 import requests
-import sys
 from supabase import create_client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY or not CLAUDE_API_KEY:
-    print("❌ ERROR: Faltan variables de entorno esenciales (Supabase o Claude).")
-    sys.exit(1)
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -46,15 +41,12 @@ def llamar_claude(modelo, prompt):
             headers=HEADERS,
             json={
                 "model": modelo,
-                "max_tokens": 1200,
+                "max_tokens": 1500,
                 "messages": [{"role": "user", "content": prompt}]
             }
         )
 
-        if response.status_code != 200:
-            print(f"❌ ERROR DE API CLAUDE (Código {response.status_code}): {response.text}")
-            sys.exit(1) # Forzamos la parada del script para detectar fallos reales
-
+        response.raise_for_status()
         data = response.json()
         content = data.get("content", [])
         if not content:
@@ -62,8 +54,8 @@ def llamar_claude(modelo, prompt):
         return content[0].get("text", "")
 
     except Exception as e:
-        print("❌ Claude error crítico:", e)
-        sys.exit(1)
+        print(f"❌ ERROR DE API CLAUDE: {e}")
+        return None
 
 def prompt_haiku(noticia):
     return f"""
@@ -119,41 +111,48 @@ P3: ¿Y A MÍ?
 
 ---SALIDA JSON---
 {{
-  "es_geopolitica": true,
-  "categoria": "geopolitica",
-  "impacto_vector_suministro": 5,
-  "impacto_vector_economia": 5,
-  "impacto_vector_seguridad": 5,
-  "impacto_españa_promedio": 5,
-  "puntaje_final": 15,
-  "razon_puntaje": "razon",
-  "analisis_p1_por_que": "texto",
-  "analisis_p2_como_afecta": "texto",
-  "analisis_p3_y_a_mi": "texto"
+  "es_geopolitica": true/false,
+  "categoria": "cultura|deportes|geopolitica|economia|seguridad|otro",
+  "impacto_vector_suministro": 0-10,
+  "impacto_vector_economia": 0-10,
+  "impacto_vector_seguridad": 0-10,
+  "impacto_españa_promedio": 0-10,
+  "puntaje_final": 1,
+  "razon_puntaje": "máximo 50 palabras",
+  "analisis_p1_por_que": "respuesta a P1 (200-250 palabras)",
+  "analisis_p2_como_afecta": "respuesta a P2 (200-250 palabras)",
+  "analisis_p3_y_a_mi": "respuesta a P3 (150-200 palabras)"
 }}
 
-REGLAS EXTREMAS:
-1. Devolver ÚNICAMENTE el objeto JSON. Sin textos introductorios, sin markdown ```json.
+REGLAS:
+1. SOLO JSON, nada más
 2. Si puntaje < 15, pon vacío en P1, P2, P3: ""
-3. Si puntaje >= 15, TODAS las 3 preguntas deben estar completas.
-4. Puntaje SOLO puede ser uno de estos números exactos: 1, 5, 15 ó 25.
+3. Si puntaje >= 15, TODAS las 3 preguntas deben estar completas
+4. Sé específico, no genérico
+5. Puntaje SOLO: 1, 5, 15 ó 25
 """
 
 def procesar_noticia(noticia):
     try:
-        # CAMBIO CLAVE: Usando el identificador oficial económico de Claude 3.5 Haiku con saldo
-        raw = llamar_claude("claude-3-5-haiku-20241022", prompt_haiku(noticia))
+        print(f"-> Analizando ID {noticia['id']}: {noticia.get('titulo', '')[:50]}...")
+        
+        raw = llamar_claude("claude-haiku-4-5-20251001", prompt_haiku(noticia))
+        
+        if not raw:
+            print("❌ Claude devolvió vacío")
+            return None
+        
         data = parse_json(raw)
 
         if not data:
-            print("⚠️ JSON parsing falló en esta noticia.")
+            print("⚠️ JSON parsing falló")
             return None
 
         puntaje = data.get("puntaje_final", 1)
         categoria = data.get("categoria", "desconocida")
         razon = data.get("razon_puntaje", "")
 
-        print(f"  Puntaje calculado: {puntaje} | Categoría: {categoria}")
+        print(f"   Puntaje: {puntaje} | Categoría: {categoria}")
 
         if puntaje < 15:
             analisis_final = f"""CATEGORÍA: {categoria.upper()}
@@ -163,7 +162,7 @@ VECTORES: S={data.get('impacto_vector_suministro', '?')}/10, E={data.get('impact
 
 RAZÓN: {razon}
 
-(No es geopolítica relevante para la portada de Lectura Rápida)
+(No es geopolítica relevante)
 """
         else:
             analisis_final = f"""CATEGORÍA: {categoria.upper()}
@@ -194,12 +193,12 @@ Promedio: {data.get('impacto_españa_promedio', '?')}/10
         }
 
     except Exception as e:
-        print(f"❌ Error al procesar noticia: {e}")
+        print(f"❌ Error procesando noticia: {e}")
         return None
 
 def main():
     try:
-        # Buscamos lotes de noticias no procesadas en Supabase
+        print("Conectando a Supabase...")
         response = supabase.table("noticias") \
             .select("*") \
             .eq("procesada", False) \
@@ -208,33 +207,25 @@ def main():
             .execute()
 
         noticias = response.data or []
-
         print(f"📦 Noticias pendientes encontradas en Supabase: {len(noticias)}")
 
-        if len(noticias) == 0:
-            print("💤 No hay noticias pendientes de procesar en este momento.")
-            return
-
         for noticia in noticias:
-            print(f"-> Analizando ID {noticia['id']}: {noticia.get('titulo', 'Sin título')[:40]}...")
             resultado = procesar_noticia(noticia)
 
             if not resultado:
-                print("⚠️ Saltando noticia debido a un error de respuesta.")
+                print("⚠️ Skip (error processing)")
                 continue
 
-            # Actualizamos la fila en Supabase marcándola como procesada de forma segura
-            supabase.table("noticias").update({
+            res = supabase.table("noticias").update({
                 "analisis": resultado["analisis"],
                 "capa": resultado["puntaje"],
                 "procesada": True
             }).eq("id", noticia["id"]).execute()
 
-            print(f"✔ Guardada correctamente con puntaje {resultado['puntaje']}")
+            print(f"✔ Guardada (puntaje {resultado['puntaje']})")
 
     except Exception as e:
-        print(f"❌ MAIN ERROR CRÍTICO: {e}")
-        sys.exit(1)
+        print(f"❌ MAIN ERROR: {e}")
 
 if __name__ == "__main__":
     main()
