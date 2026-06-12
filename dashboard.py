@@ -2,7 +2,6 @@ import streamlit as st
 from supabase import create_client
 from datetime import datetime
 
-# Configurar página
 st.set_page_config(
     page_title="MundoEco",
     page_icon="🌍",
@@ -17,7 +16,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Conectar a Supabase
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -25,48 +23,15 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.title("🌍 MundoEco")
 st.markdown("Análisis geopolítico y económico contextualizado para España")
 
-# Sidebar
 st.sidebar.header("Filtros")
 vista = st.sidebar.radio(
     "Selecciona vista:",
     ["📋 Lectura Rápida", "🔍 Explorar Todas", "🏷️ Por Región", "📊 Estadísticas"]
 )
 
-def formatear_fecha(fecha_str):
-    if not fecha_str:
-        return "Fecha reciente"
-    fecha_limpia = str(fecha_str).split(".")[0].split("+")[0].strip()
-    meses_en = {"Jan": "Ene", "Apr": "Abr", "Aug": "Ago", "Dec": "Dic"}
-    try:
-        dt = datetime.strptime(fecha_limpia, "%Y-%m-%dT%H:%M:%S")
-        return dt.strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        try:
-            dt = datetime.strptime(fecha_limpia, "%Y-%m-%d %H:%M:%S")
-            return dt.strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            try:
-                if "," in fecha_limpia:
-                    fecha_limpia = fecha_limpia.split(",", 1)[1].strip()
-                partes = fecha_limpia.split(" ")
-                if len(partes) >= 4:
-                    dia = partes[0].zfill(2)
-                    mes = partes[1]
-                    mes = meses_en.get(mes, mes)
-                    año = partes[2]
-                    hora = partes[3][:5]
-                    return f"{dia} {mes} {año} - {hora}"
-                return fecha_str
-            except Exception:
-                return str(fecha_str).replace("T", " ")[:16]
-
-@st.cache_data(ttl=60) # Bajamos el cache a 1 minuto para ver los cambios más rápido
+@st.cache_data(ttl=300)
 def cargar_noticias():
-    resultado = supabase.table("noticias")\
-        .select("*")\
-        .order("id", desc=True)\
-        .limit(300)\
-        .execute()
+    resultado = supabase.table("noticias").select("*").order("fecha", desc=True).execute()
     return resultado.data
 
 @st.cache_data(ttl=300)
@@ -85,120 +50,127 @@ if not noticias:
     st.warning("No hay noticias aún. Espera a que se ejecute la ingesta.")
 else:
     
-    # VISTA 1: Lectura Rápida
     if vista == "📋 Lectura Rápida":
-        st.subheader("Análisis estratégico de alto impacto para España")
+        st.subheader("Geopolítica relevante para España (Puntaje >= 15)")
         
-        noticias_analizadas = [n for n in noticias if n.get('procesada') and n.get('analisis')]
+        # FILTRAR: Solo noticias con puntaje >= 15 y procesadas
+        noticias_relevantes = [n for n in noticias 
+                               if n.get('procesada') 
+                               and n.get('analisis') 
+                               and n.get('capa', 1) >= 15][:8]
         
-        if not noticias_analizadas:
-            st.info("No hay análisis completados en las últimas horas.")
+        if not noticias_relevantes:
+            st.info("No hay análisis geopolítico relevante en este momento.")
         else:
-            # Función ultra-segura para forzar el número entero en la ordenación
-            def obtener_score_seguro(n):
-                try:
-                    val = n.get('capa', '0')
-                    return int(val)
-                except:
-                    return 0
-            
-            # FILTRO DE SEGURIDAD: Solo aceptamos noticias que tengan un score del nuevo motor (mínimo 5)
-            # Esto fulmina las noticias alemanas viejas que tengan rescoldos de pruebas anteriores
-            noticias_filtradas = [n for n in noticias_analizadas if obtener_score_seguro(n) >= 5]
-            
-            # Ordenamos por score real numérico descendentemente
-            noticias_ordenadas = sorted(noticias_filtradas, key=obtener_score_seguro, reverse=True)
-            
-            noticias_portada = noticias_ordenadas[:7]
-            
-            if not noticias_portada:
-                st.info("Esperando a que el nuevo motor califique las noticias en el próximo lote...")
-            else:
-                for noticia in noticias_portada:
-                    with st.container(border=True):
-                        col_tit, col_score = st.columns([5, 1])
-                        with col_tit:
-                            st.markdown(f"### {noticia['titulo']}")
-                            fecha_bonita = formatear_fecha(noticia.get('fecha'))
-                            st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()} | 🕒 {fecha_bonita}")
-                        with col_score:
-                            score_val = noticia.get('capa', '0')
-                            st.metric("Gravedad", f"{score_val}/25")
-                            
-                        st.markdown("---")
-                        
-                        analisis_text = noticia['analisis']
-                        st.markdown(f"""
-<div style="font-size: 0.95rem; line-height: 1.6; text-align: justify;">
-{analisis_text}
-</div>
-""", unsafe_allow_html=True)
-                        st.markdown(f"[Leer fuente original →]({noticia['url']})")
+            for noticia in noticias_relevantes:
+                with st.container(border=True):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"### {noticia['titulo']}")
+                        st.caption(f"📰 {noticia['fuente']} | 🌍 {noticia['region'].upper()}")
+                    with col2:
+                        st.metric("Puntaje", f"{noticia.get('capa', '?')}/25")
+                    
+                    st.markdown(noticia['analisis'])
+                    st.markdown(f"[Leer fuente original →]({noticia['url']})")
     
-    # VISTA 2: Explorar Todas
     elif vista == "🔍 Explorar Todas":
-        st.subheader("Últimas noticias añadidas al corpus")
+        st.subheader("Todas las noticias (análisis completo)")
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            filtro_fuente = st.multiselect("Filtrar por fuente:", obtener_fuentes(), default=None)
+            filtro_fuente = st.multiselect(
+                "Filtrar por fuente:",
+                obtener_fuentes(),
+                default=None
+            )
         with col2:
-            filtro_region = st.multiselect("Filtrar por región:", obtener_regiones(), default=None)
+            filtro_region = st.multiselect(
+                "Filtrar por región:",
+                obtener_regiones(),
+                default=None
+            )
         with col3:
-            procesada = st.selectbox("Estado:", ["Todas", "Con análisis", "Sin análisis"])
+            filtro_puntaje = st.selectbox(
+                "Mostrar:",
+                ["Todas", "Geopolítica (>=15)", "Señales débiles (5-14)", "Ruido (<5)"]
+            )
         
         noticias_filtered = noticias
         if filtro_fuente:
             noticias_filtered = [n for n in noticias_filtered if n['fuente'] in filtro_fuente]
         if filtro_region:
             noticias_filtered = [n for n in noticias_filtered if n['region'] in filtro_region]
-        if procesada == "Con análisis":
-            noticias_filtered = [n for n in noticias_filtered if n.get('procesada')]
-        elif procesada == "Sin análisis":
-            noticias_filtered = [n for n in noticias_filtered if not n.get('procesada')]
         
-        st.write(f"Mostrando **{len(noticias_filtered)}** noticias recientes del hilo temporal")
+        if filtro_puntaje == "Geopolítica (>=15)":
+            noticias_filtered = [n for n in noticias_filtered if n.get('capa', 1) >= 15]
+        elif filtro_puntaje == "Señales débiles (5-14)":
+            noticias_filtered = [n for n in noticias_filtered if 5 <= n.get('capa', 1) < 15]
+        elif filtro_puntaje == "Ruido (<5)":
+            noticias_filtered = [n for n in noticias_filtered if n.get('capa', 1) < 5]
+        
+        st.write(f"Total: **{len(noticias_filtered)}** noticias")
         
         for noticia in noticias_filtered:
             with st.container(border=True):
                 st.markdown(f"**{noticia['titulo']}**")
-                col1, col2, col3 = st.columns(3)
-                fecha_bonita = formatear_fecha(noticia.get('fecha'))
-                score_badge = f"⭐ {noticia.get('capa', '0')}/25" if noticia.get('procesada') else "⏳"
-                col1.caption(f"📰 {noticia['fuente']} | 🕒 {fecha_bonita}")
-                col2.caption(f"🌍 {noticia['region']} | Impacto: {score_badge}")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.caption(f"📰 {noticia['fuente']}")
+                col2.caption(f"🌍 {noticia['region']}")
                 col3.caption(f"{'✅ Analizado' if noticia.get('procesada') else '⏳ Pendiente'}")
+                col4.metric("Puntaje", f"{noticia.get('capa', '?')}/25")
                 
                 if noticia.get('procesada') and noticia.get('analisis'):
-                    with st.expander("Ver análisis de impacto"):
+                    with st.expander("Ver análisis completo"):
                         st.markdown(noticia['analisis'])
-                st.markdown(f"[Leer →]({noticia['url']})")
                 
-    # VISTAS ADICIONALES (Se mantienen intactas)
+                st.markdown(f"[Leer →]({noticia['url']})")
+    
     elif vista == "🏷️ Por Región":
-        st.subheader("Distribución geográfica reciente")
+        st.subheader("Geopolítica por región")
+        
         regiones = sorted(set(n['region'] for n in noticias))
         for region in regiones:
-            noticias_region = [n for n in noticias if n['region'] == region]
-            with st.expander(f"**{region.upper()}** ({len(noticias_region)} noticias recientes)"):
-                for noticia in noticias_region[:5]:
-                    st.markdown(f"- **{noticia['titulo']}** ({noticia['fuente']})")
-                    if noticia.get('procesada') and noticia.get('analisis'):
-                        st.caption(noticia['analisis'][:200] + "...")
-                        
+            noticias_region = [n for n in noticias if n['region'] == region and n.get('capa', 1) >= 15]
+            if noticias_region:
+                with st.expander(f"**{region.upper()}** ({len(noticias_region)} relevantes)"):
+                    for noticia in noticias_region[:5]:
+                        st.markdown(f"- **{noticia['titulo']}** (Puntaje: {noticia.get('capa', '?')})")
+                        if noticia.get('procesada') and noticia.get('analisis'):
+                            st.caption(noticia['analisis'][:300] + "...")
+    
     elif vista == "📊 Estadísticas":
-        st.subheader("Métricas de los últimos lotes")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Ventana de análisis", len(noticias))
-        col2.metric("Completadas", len([n for n in noticias if n.get('procesada')]))
-        col3.metric("Fuentes activas", len(set(n['fuente'] for n in noticias)))
-        col4.metric("Regiones cubiertas", len(set(n['region'] for n in noticias)))
+        st.subheader("Estadísticas geopolíticas")
         
-        st.write("**Noticias recientes por fuente:**")
-        fuentes = {}
+        noticias_relevantes = [n for n in noticias if n.get('capa', 1) >= 15]
+        noticias_debiles = [n for n in noticias if 5 <= n.get('capa', 1) < 15]
+        noticias_ruido = [n for n in noticias if n.get('capa', 1) < 5]
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total noticias", len(noticias))
+        col2.metric("Geopolítica (>=15)", len(noticias_relevantes))
+        col3.metric("Señales débiles", len(noticias_debiles))
+        col4.metric("Ruido", len(noticias_ruido))
+        
+        st.write("**Noticias por puntaje:**")
+        puntajes = {}
         for n in noticias:
-            fuentes[n['fuente']] = fuentes.get(n['fuente'], 0) + 1
-        st.bar_chart(fuentes)
+            capa = n.get('capa', 1)
+            if capa >= 15:
+                cat = "Geopolítica (>=15)"
+            elif capa >= 5:
+                cat = "Señales débiles (5-14)"
+            else:
+                cat = "Ruido (<5)"
+            puntajes[cat] = puntajes.get(cat, 0) + 1
+        st.bar_chart(puntajes)
+        
+        st.write("**Fuentes con análisis relevante:**")
+        fuentes_relevantes = {}
+        for n in noticias_relevantes:
+            fuentes_relevantes[n['fuente']] = fuentes_relevantes.get(n['fuente'], 0) + 1
+        st.bar_chart(fuentes_relevantes)
 
 st.divider()
-st.caption("MundoEco MVP • Análisis geopolítico basado en Gravedad Macroeconómica • Powered by Claude")
+st.caption("MundoEco MVP • Análisis contextualizado para España • Filtrado por impacto geopolítico real")
+EOFDASH
