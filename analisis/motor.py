@@ -198,6 +198,4 @@ def main():
     except Exception as e:
         print(f"❌ MAIN ERROR: {e}")
 
-if __name__ == "__main__":
-    main()
-EOFPYTHON
+if __name__ == "__main__"
