@@ -199,3 +199,4 @@ def main():
         print(f"❌ MAIN ERROR: {e}")
 
 if __name__ == "__main__":
+    main()
