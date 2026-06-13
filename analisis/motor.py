@@ -264,6 +264,5 @@ except Exception as e:
     print(f"❌ MAIN ERROR: {e}")
 ```
 
-if **name** == "**main**":
-main()
-
+if __name__ == "__main__":
+    main()
