@@ -46,12 +46,17 @@ def llamar_claude(modelo, prompt):
             }
         )
 
+        if not response.ok:
+            print(f"❌ HTTP {response.status_code}: {response.text}")
+            
         response.raise_for_status()
         data = response.json()
         content = data.get("content", [])
         if not content:
             return None
         return content[0].get("text", "")
+
+        print("Claude respondió correctamente")
 
     except Exception as e:
         print(f"❌ ERROR DE API CLAUDE: {e}")
