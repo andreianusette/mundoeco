@@ -202,35 +202,68 @@ Promedio: {data.get('impacto_españa_promedio', '?')}/10
         return None
 
 def main():
-    try:
-        print("Conectando a Supabase...")
-        response = supabase.table("noticias") \
-            .select("*") \
-            .eq("procesada", False) \
-            .order("id", desc=False) \
-            .limit(20) \
+try:
+print("Conectando a Supabase...")
+
+```
+    MAX_PROCESAR = 100
+    total_procesadas = 0
+
+    while total_procesadas < MAX_PROCESAR:
+
+        response = (
+            supabase.table("noticias")
+            .select("*")
+            .eq("procesada", False)
+            .order("id", desc=False)
+            .limit(50)
             .execute()
+        )
 
         noticias = response.data or []
-        print(f"📦 Noticias pendientes encontradas en Supabase: {len(noticias)}")
+
+        if not noticias:
+            print("✅ No quedan noticias pendientes")
+            break
+
+        print(f"📦 Lote encontrado: {len(noticias)} noticias")
 
         for noticia in noticias:
+
+            if total_procesadas >= MAX_PROCESAR:
+                print(f"🛑 Límite alcanzado ({MAX_PROCESAR})")
+                break
+
             resultado = procesar_noticia(noticia)
 
             if not resultado:
-                print("⚠️ Skip (error processing)")
+                print(
+                    f"⚠️ Skip ID {noticia['id']} (error processing)"
+                )
                 continue
 
-            res = supabase.table("noticias").update({
+            supabase.table("noticias").update({
                 "analisis": resultado["analisis"],
                 "capa": resultado["puntaje"],
                 "procesada": True
             }).eq("id", noticia["id"]).execute()
 
-            print(f"✔ Guardada (puntaje {resultado['puntaje']})")
+            total_procesadas += 1
 
-    except Exception as e:
-        print(f"❌ MAIN ERROR: {e}")
+            print(
+                f"✔ Guardada ID {noticia['id']} "
+                f"(puntaje {resultado['puntaje']})"
+            )
 
-if __name__ == "__main__":
-    main()
+    print(
+        f"✅ Ejecución terminada. "
+        f"Total procesadas: {total_procesadas}"
+    )
+
+except Exception as e:
+    print(f"❌ MAIN ERROR: {e}")
+```
+
+if **name** == "**main**":
+main()
+
