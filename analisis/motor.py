@@ -204,63 +204,52 @@ Promedio: {data.get('impacto_españa_promedio', '?')}/10
 def main():
     try:
         print("Conectando a Supabase...")
+        MAX_PROCESAR = 999
+        total_procesadas = 0
 
-    MAX_PROCESAR = 100
-    total_procesadas = 0
+        while total_procesadas < MAX_PROCESAR:
+            response = (
+                supabase.table("noticias")
+                .select("*")
+                .eq("procesada", False)
+                .order("id", desc=False)
+                .limit(50)
+                .execute()
+            )
+            noticias = response.data or []
 
-    while total_procesadas < MAX_PROCESAR:
-
-        response = (
-            supabase.table("noticias")
-            .select("*")
-            .eq("procesada", False)
-            .order("id", desc=False)
-            .limit(50)
-            .execute()
-        )
-
-        noticias = response.data or []
-
-        if not noticias:
-            print("✅ No quedan noticias pendientes")
-            break
-
-        print(f"📦 Lote encontrado: {len(noticias)} noticias")
-
-        for noticia in noticias:
-
-            if total_procesadas >= MAX_PROCESAR:
-                print(f"🛑 Límite alcanzado ({MAX_PROCESAR})")
+            if not noticias:
+                print("✅ No quedan noticias pendientes")
                 break
 
-            resultado = procesar_noticia(noticia)
+            print(f"📦 Lote encontrado: {len(noticias)} noticias")
 
-            if not resultado:
-                print(
-                    f"⚠️ Skip ID {noticia['id']} (error processing)"
-                )
-                continue
+            for noticia in noticias:
+                if total_procesadas >= MAX_PROCESAR:
+                    print(f"🛑 Límite alcanzado ({MAX_PROCESAR})")
+                    break
 
-            supabase.table("noticias").update({
-                "analisis": resultado["analisis"],
-                "capa": resultado["puntaje"],
-                "procesada": True
-            }).eq("id", noticia["id"]).execute()
+                resultado = procesar_noticia(noticia)
 
-            total_procesadas += 1
+                if not resultado:
+                    print(f"⚠️ Skip ID {noticia['id']} (error processing)")
+                    continue
 
-            print(
-                f"✔ Guardada ID {noticia['id']} "
-                f"(puntaje {resultado['puntaje']})"
-            )
+                supabase.table("noticias").update({
+                    "analisis": resultado["analisis"],
+                    "capa": resultado["puntaje"],
+                    "procesada": True
+                }).eq("id", noticia["id"]).execute()
 
-    print(
-        f"✅ Ejecución terminada. "
-        f"Total procesadas: {total_procesadas}"
-    )
+                total_procesadas += 1
+                print(f"✔ Guardada ID {noticia['id']} (puntaje {resultado['puntaje']})")
 
-except Exception as e:
-    print(f"❌ MAIN ERROR: {e}")
+        print(f"✅ Ejecución terminada. Total procesadas: {total_procesadas}")
+
+    except Exception as e:
+        print(f"❌ MAIN ERROR: {e}")
+
 
 if __name__ == "__main__":
+    main()
     main()
