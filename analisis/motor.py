@@ -202,8 +202,8 @@ Promedio: {data.get('impacto_españa_promedio', '?')}/10
         return None
 
 def main():
-try:
-print("Conectando a Supabase...")
+    try:
+        print("Conectando a Supabase...")
 
 ```
     MAX_PROCESAR = 100
