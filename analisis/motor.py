@@ -205,7 +205,6 @@ def main():
     try:
         print("Conectando a Supabase...")
 
-```
     MAX_PROCESAR = 100
     total_procesadas = 0
 
@@ -262,7 +261,6 @@ def main():
 
 except Exception as e:
     print(f"❌ MAIN ERROR: {e}")
-```
 
 if __name__ == "__main__":
     main()
