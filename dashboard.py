@@ -9,40 +9,33 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- FUNCIÓN AUXILIAR: Formatear Fechas ---
+# --- MEJORA 1: Formateo de fechas ultra-robusto usando datetime ---
 def formatear_fecha_noticia(noticia_obj):
     fecha_cruda = noticia_obj.get('created_at') or noticia_obj.get('fecha')
     if not fecha_cruda:
         return "Fecha no disponible"
     try:
-        if "T" in str(fecha_cruda):
-            fecha_parte, hora_parte = str(fecha_cruda).split("T")
-            return f"{fecha_parte.split('-')[2]}/{fecha_parte.split('-')[1]}/{fecha_parte.split('-')[0]} a las {hora_parte[:5]}"
-        elif " " in str(fecha_cruda):
-            fecha_parte, hora_parte = str(fecha_cruda).split(" ")
-            return f"{fecha_parte.split('-')[2]}/{fecha_parte.split('-')[1]}/{fecha_parte.split('-')[0]} a las {hora_parte[:5]}"
-        return str(fecha_cruda)
+        # Reemplazamos la Z de UTC por el desfase estándar para evitar fallos de isoformat
+        fecha_limpia = str(fecha_cruda).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(fecha_limpia)
+        return dt.strftime("%d/%m/%Y a las %H:%M")
     except Exception:
-        return str(fecha_cruda)
+        # Fallback si el formato es completamente extraño
+        return str(fecha_cruda)[:16]
 
-# --- FIX ROBUSTO: Generar Títulos Atractivos ---
+# --- FIX ROBUSTO: Títulos Atractivos con protección .get() ---
 def titulo_mostrar(noticia):
     analisis = noticia.get('analisis', '')
     titulo_original = noticia.get('titulo', '').strip()
     
     if analisis:
-        # Intentamos extraer la primera frase del análisis de Claude
         for separador in ['. ', '.\n', '! ', '!\n', '? ', '?\n']:
             idx = analisis.find(separador)
-            # Si encuentra un punto en los primeros 120 caracteres, asumimos que es un buen titular
             if idx != -1 and 15 < idx < 120:  
                 return analisis[:idx + 1].strip()
-        
-        # Si no hay un punto limpio al inicio, generamos un extracto corto del análisis
         if len(analisis) > 80:
             return analisis[:80].strip() + '...'
             
-    # Si todo lo anterior falla o no hay análisis, usamos el título original
     return titulo_original if titulo_original else "(Noticia sin título)"
 
 # --- INICIALIZAR SUPABASE ---
@@ -50,13 +43,15 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- CACHÉ DE DATOS ---
+# --- MEJORA 3: Caché optimizada para escalabilidad ---
 @st.cache_data(ttl=30)
 def cargar_noticias():
     todas = []
     PAGE_SIZE = 1000
     offset = 0
-    MAX_NOTICIAS_TOTALES = 2500 
+    # Bajamos el tope de seguridad para el MVP; 1500 registros es más que suficiente 
+    # para mantener el histórico de la semana sin saturar la RAM ni tu cuota de Supabase
+    MAX_NOTICIAS_TOTALES = 1500 
 
     while offset < MAX_NOTICIAS_TOTALES:
         resultado = (
@@ -75,16 +70,15 @@ def cargar_noticias():
 
 noticias = cargar_noticias()
 
-# Extracción de filtros
-fuentes_disponibles = sorted(list(set(n['fuente'] for n in noticias if n.get('fuente'))))
-regiones_disponibles = sorted(list(set(n['region'] for n in noticias if n.get('region'))))
+# --- MEJORA 2: Extracción de filtros usando de forma segura .get() ---
+fuentes_disponibles = sorted(list(set(n.get('fuente') for n in noticias if n.get('fuente'))))
+regiones_disponibles = sorted(list(set(n.get('region') for n in noticias if n.get('region'))))
 
 # --- INTERFAZ FRONTEND ---
 st.title("🌍 MundoEco")
 st.markdown("### *Inteligencia Geopolítica y Económica Contextualizada para España*")
 st.write("---")
 
-# Botón de actualización forzada en el Sidebar con estilo estético
 if st.sidebar.button("🔄 Sincronizar con Supabase"):
     st.cache_data.clear()
     st.rerun()
@@ -99,14 +93,14 @@ if not noticias:
     st.warning("Aún no hay noticias indexadas. Comprueba el script de ingesta.")
 else:
     
-    # ==================== VISTA: LECTURA RÁPIDA (PORTADA NUEVA) ====================
+    # ==================== VISTA: LECTURA RÁPIDA ====================
     if vista == "📋 Portada: Lectura Rápida":
         st.subheader("⚡ Lo más relevante del panorama internacional")
         st.caption("Últimos análisis críticos diversificados por procedencia (Filtrado de Impacto >= 15/25)")
         
         candidatas = [n for n in noticias if n.get('procesada') and n.get('analisis') and n.get('capa', 1) >= 15]
         
-        # Diversificación inteligente
+        # Diversificación inteligente de fuentes
         noticias_portada = []
         conteo_fuentes = {}
         MAX_POR_FUENTE = 2  
@@ -124,15 +118,11 @@ else:
         if not noticias_portada:
             st.info("No se han detectado alertas geopolíticas de alto impacto en las últimas horas.")
         else:
-            # Renderizado en cuadrícula o tarjetas individuales con reborde limpio
             for noticia in noticias_portada:
-                # CREACIÓN DE LA TARJETA CON REBORDE
                 with st.container(border=True):
-                    # Diseño asimétrico: Título e Info a la izquierda, Métrica de impacto a la derecha
                     col_texto, col_metrica = st.columns([5, 1])
                     
                     with col_texto:
-                        # Forzamos un emoticón según la región para darle dinamismo visual
                         region_flag = "🌐"
                         reg = str(noticia.get('region', '')).lower()
                         if 'ue' in reg or 'europa' in reg: region_flag = "🇪🇺"
@@ -140,29 +130,27 @@ else:
                         elif 'china' in reg: region_flag = "🇨🇳"
                         
                         st.markdown(f"#### {region_flag} {titulo_mostrar(noticia)}")
-                        
                         fecha_txt = formatear_fecha_noticia(noticia)
-                        st.caption(f"**Fuente:** {noticia['fuente']}  |  **Actualizado:** {fecha_txt}")
+                        st.caption(f"**Fuente:** {noticia.get('fuente', 'Desconocida')}  |  **Actualizado:** {fecha_txt}")
                     
                     with col_metrica:
-                        # El puntaje actúa como un "badge" o medidor de temperatura de la noticia
                         st.metric(label="Relevancia", value=f"{noticia.get('capa', '?')}/25")
                     
-                    # --- GESTIÓN DEL TEXTO LARGO (ENTRADILLA) ---
-                    analisis_completo = noticia['analisis']
-                    
-                    # Mostramos solo los primeros 250 caracteres como gancho de lectura
+                    analisis_completo = noticia.get('analisis', '')
                     entradilla = analisis_completo[:250] + "..." if len(analisis_completo) > 250 else analisis_completo
                     st.markdown(f"*{entradilla}*")
                     
-                    # El resto del análisis queda elegantemente recogido
                     with st.expander("🔎 Desplegar análisis estratégico completo e implicaciones"):
                         st.markdown(analisis_completo)
-                        st.markdown(f"🔗 [Leer artículo original en {noticia['fuente']}]({noticia['url']})")
+                        if noticia.get('url'):
+                            st.markdown(f"🔗 [Leer artículo original en {noticia.get('fuente', 'Fuente')}]({noticia.get('url')})")
 
     # ==================== VISTA: EXPLORAR HEMEROTECA ====================
     elif vista == "🔍 Explorar Hemeroteca":
         st.subheader("🔍 Buscador general de registros analizados")
+        
+        # --- MEJORA 4: Buscador de texto libre (Aporta un valor de usuario brutal) ---
+        busqueda_texto = st.text_input("⌨️ Buscar por palabra clave (en el título o en el análisis de la IA):", placeholder="Ej. Aranceles, Gas, OTAN, Semiconductores...")
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -175,7 +163,17 @@ else:
                 ["Relevancia Media y Alta (>=5)", "Solo Alertas Críticas (>=15)", "Solo Señales Débiles (5-14)", "Ver todo el histórico (Incluye Ruido)"]
             )
         
+        # Aplicación secuencial de filtros
         noticias_filtered = noticias
+        
+        if busqueda_texto:
+            texto_lower = busqueda_texto.lower()
+            noticias_filtered = [
+                n for n in noticias_filtered
+                if texto_lower in n.get("analisis", "").lower()
+                or texto_lower in n.get("titulo", "").lower()
+            ]
+            
         if filtro_fuente:
             noticias_filtered = [n for n in noticias_filtered if n.get('fuente') in filtro_fuente]
         if filtro_region:
@@ -201,15 +199,15 @@ else:
             with st.container(border=True):
                 st.markdown(f"##### {titulo_mostrar(noticia)}")
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.caption(f"📰 {noticia['fuente']} | 🕒 {formatear_fecha_noticia(noticia)}")
+                c1.caption(f"📰 {noticia.get('fuente', 'Desconocida')} | 🕒 {formatear_fecha_noticia(noticia)}")
                 c2.caption(f"🌍 Región: {str(noticia.get('region', '')).upper()}")
                 c3.caption(f"Impacto: **{noticia.get('capa', '?')}/25**")
                 
                 if noticia.get('procesada') and noticia.get('analisis'):
                     with st.expander("Revisar informe de IA"):
-                        st.markdown(noticia['analisis'])
+                        st.markdown(noticia.get('analisis', ''))
                         if noticia.get('url'):
-                            st.markdown(f"[Enlace original →]({noticia['url']})")
+                            st.markdown(f"[Enlace original →]({noticia.get('url')})")
 
     # ==================== VISTA: POR REGIÓN ====================
     elif vista == "🏷️ Análisis por Región":
@@ -223,7 +221,7 @@ else:
                     with st.expander(f"🗺️ **{region.upper()}** — ({len(noticias_region)} análisis de impacto elevado)"):
                         for noticia in noticias_region[:5]:
                             st.markdown(f"• **{titulo_mostrar(noticia)}** ({noticia.get('capa')} pts)")
-                            st.caption(noticia['analisis'][:180] + "...")
+                            st.caption(noticia.get('analisis', '')[:180] + "...")
 
     # ==================== VISTA: ESTADÍSTICAS ====================
     elif vista == "📊 Panel de Impacto":
@@ -233,8 +231,21 @@ else:
         n_ruido = len([n for n in noticias if n.get('capa', 1) < 5])
         
         col1, col2, col3 = st.columns(3)
-        col1.metric("Alertas Geopolíticas", n_relevantes)
-        col2.metric("Tendencias / Señales Débiles", n_debiles)
-        col3.metric("Ruido Informativo Filtrado", n_ruido)
+        col1.metric("Alertas Geopolíticas (>=15)", n_relevantes)
+        col2.metric("Tendencias Intermedias (5-14)", n_debiles)
+        col3.metric("Ruido Descartado (<5)", n_ruido)
         
-        st.bar_chart({"Críticas": n_relevantes, "Intermedias": n_debiles, "Descartadas": n_ruido})
+        # --- MEJORA 6: Gráfico mejor estructurado nativamente en columnas de Streamlit ---
+        st.write("---")
+        st.write("**Distribución del volumen informativo por criticidad:**")
+        
+        # Mapeamos la estructura para que st.bar_chart la renderice de forma impecable
+        datos_grafico = {
+            "Alertas Críticas": n_relevantes,
+            "Señales Débiles": n_debiles,
+            "Ruido Informativo": n_ruido
+        }
+        st.bar_chart(datos_grafico)
+
+st.divider()
+st.caption("MundoEco MVP • v4.2 Estabilizada • Filtros de seguridad aplicados")
