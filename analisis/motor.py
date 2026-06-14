@@ -48,7 +48,7 @@ def llamar_claude(modelo, prompt):
 
         if not response.ok:
             print(f"❌ HTTP {response.status_code}: {response.text}")
-            
+
         response.raise_for_status()
         data = response.json()
         content = data.get("content", [])
@@ -116,6 +116,7 @@ P3: ¿Y A MÍ?
 
 ---SALIDA JSON---
 {{
+  "titulo_es": "Traducción fiel del titular al español. Si ya está en español, cópialo exactamente igual.",
   "es_geopolitica": true/false,
   "categoria": "cultura|deportes|geopolitica|economia|seguridad|otro",
   "impacto_vector_suministro": 0-10,
@@ -135,18 +136,19 @@ REGLAS:
 3. Si puntaje >= 15, TODAS las 3 preguntas deben estar completas
 4. Sé específico, no genérico
 5. Puntaje SOLO: 1, 5, 15 ó 25
+6. titulo_es es OBLIGATORIO siempre, independientemente del puntaje
 """
 
 def procesar_noticia(noticia):
     try:
         print(f"-> Analizando ID {noticia['id']}: {noticia.get('titulo', '')[:50]}...")
-        
+
         raw = llamar_claude("claude-haiku-4-5-20251001", prompt_haiku(noticia))
-        
+
         if not raw:
             print("❌ Claude devolvió vacío")
             return None
-        
+
         data = parse_json(raw)
 
         if not data:
@@ -157,7 +159,11 @@ def procesar_noticia(noticia):
         categoria = data.get("categoria", "desconocida")
         razon = data.get("razon_puntaje", "")
 
+        # Título en español: usa el de Haiku, si falla usa el original como fallback
+        titulo_es = data.get("titulo_es") or noticia.get("titulo", "")
+
         print(f"   Puntaje: {puntaje} | Categoría: {categoria}")
+        print(f"   Título ES: {titulo_es[:60]}...")
 
         if puntaje < 15:
             analisis_final = f"""CATEGORÍA: {categoria.upper()}
@@ -194,7 +200,8 @@ Promedio: {data.get('impacto_españa_promedio', '?')}/10
         return {
             "analisis": analisis_final,
             "puntaje": puntaje,
-            "categoria": categoria
+            "categoria": categoria,
+            "titulo_es": titulo_es
         }
 
     except Exception as e:
@@ -238,11 +245,12 @@ def main():
                 supabase.table("noticias").update({
                     "analisis": resultado["analisis"],
                     "capa": resultado["puntaje"],
-                    "procesada": True
+                    "procesada": True,
+                    "titulo_es": resultado["titulo_es"]   # ← NUEVO
                 }).eq("id", noticia["id"]).execute()
 
                 total_procesadas += 1
-                print(f"✔ Guardada ID {noticia['id']} (puntaje {resultado['puntaje']})")
+                print(f"✔ Guardada ID {noticia['id']} (puntaje {resultado['puntaje']}) | título ES guardado")
 
         print(f"✅ Ejecución terminada. Total procesadas: {total_procesadas}")
 
