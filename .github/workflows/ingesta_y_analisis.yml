@@ -11,6 +11,8 @@ on:
 jobs:
   proceso_completo:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
@@ -39,3 +41,12 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: python analisis/motor.py
+
+      - name: Registrar actividad (mantener el repo activo)
+        run: |
+          echo "Última ejecución: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" > .github/last_run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/last_run.txt
+          git diff --staged --quiet || git commit -m "chore: actualizar última ejecución automática"
+          git push
